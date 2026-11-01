@@ -18,7 +18,7 @@ It draws a one-line band above the prompt and a detail pane (`/deck`).
 | Open pull requests (current branch highlighted) | current PR | list of 10 |
 | Todo progress (from Claude's todo list) | yes | yes, with the current task |
 | Working directory | optional | optional |
-| Session cost | | yes |
+| API-equivalent cost of the session (what the tokens would cost at API prices) and the last turn's share | yes, in the status line | yes |
 
 A toast appears once when the context passes your warning threshold, and the
 status line carries `model · ctx N%`.

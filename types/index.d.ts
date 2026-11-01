@@ -14,6 +14,8 @@ export type Deck = {
   tokens: number
   window: number
   usd?: number
+  /** Cost the last turn added, in US dollars. */
+  turnUsd?: number
   limits: Limit[]
   dir: string
   /** Current branch, or null outside a git repository. */

@@ -47,6 +47,7 @@ function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, un
   const parts = [
     `${d.model}  ${bar(d.percent, 8)} ${d.percent}% ${k(d.tokens)}/${k(d.window)}`,
     limit !== undefined ? `${limitName(limit.kind)} ${limit.percent}%${resets(limit.resetsAt)}` : '',
+    d.usd !== undefined ? `$${d.usd.toFixed(2)}${d.turnUsd !== undefined ? ` (+${d.turnUsd.toFixed(2)})` : ''}` : '',
     d.branch !== null
       ? `⎇ ${d.branch}${d.worktree !== null ? ` (wt ${d.worktree})` : ''}${d.changes > 0 ? ` ±${d.changes}` : ''}`
       : '',
@@ -134,6 +135,10 @@ async function refresh($: EngineInterface, options: Readonly<Record<string, unkn
     tokens,
     window,
     usd: usage.cost?.usd,
+    turnUsd:
+      usage.cost !== undefined && previous?.usd !== undefined && usage.cost.usd > previous.usd
+        ? usage.cost.usd - previous.usd
+        : previous?.turnUsd,
     limits,
     dir,
     branch: branch === 'HEAD' ? '(detached)' : branch,
@@ -257,7 +262,12 @@ export const register: Register = (on, options) => {
             {limitName(l.kind)} {bar(l.percent, 10)} {l.percent}% used, {Math.round((100 - l.percent) * 10) / 10}% left{resets(l.resetsAt)}
           </Text>
         ))}
-        {d.usd !== undefined && <Text dimColor>Session cost ${d.usd.toFixed(2)}</Text>}
+        {d.usd !== undefined && (
+          <Text>
+            API-equivalent cost ${d.usd.toFixed(2)}
+            {d.turnUsd !== undefined ? ` (last turn +$${d.turnUsd.toFixed(2)})` : ''}
+          </Text>
+        )}
         <Text> </Text>
         <Text bold>Git</Text>
         {d.branch === null ? (
