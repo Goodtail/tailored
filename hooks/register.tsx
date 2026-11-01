@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Limit, Pr, Spend, Todo, TodoItem } from '../types'
+import type { Deck, Limit, Pr, Spend, Todo, TodoItem, Totals } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -59,6 +59,11 @@ const prettyModel = (id: string) => {
 
 const spend = atom({ plugin: 'session-deck', key: 'spend' } as const, null, {
   shape: 'spend-1',
+})
+
+// Everything the session has spent since the mod loaded, summed over messages.
+const totals = atom({ plugin: 'session-deck', key: 'totals' } as const, null, {
+  shape: 'totals-1',
 })
 
 const homeShort = (path: string) => path.replace(/^\/(Users|home)\/[^/]+/, '~')
@@ -144,6 +149,8 @@ async function publish($: EngineInterface, options: Readonly<Record<string, unkn
 }
 
 let lastPrFetch = 0
+
+const ZERO: Totals = { messages: 0, calls: 0, resent: 0, written: 0, fresh: 0, output: 0 }
 
 let lastRefresh = 0
 // The session's cost when the current message began; null before the first.
@@ -231,6 +238,7 @@ export const register: Register = (on, options) => {
       calls = 0
       turnBaseUsd = (await $.session.usage()).cost?.usd ?? null
       await update($, spend, () => ({ calls: 0, resent: 0, written: 0, fresh: 0, output: 0 }))
+      await update($, totals, t => ({ ...(t ?? ZERO), messages: (t?.messages ?? 0) + 1 }))
     }
 
     return next(e)
@@ -249,6 +257,14 @@ export const register: Register = (on, options) => {
         written: (row?.written ?? 0) + (u?.cache_creation_input_tokens ?? 0),
         fresh: (row?.fresh ?? 0) + (u?.input_tokens ?? 0),
         output: (row?.output ?? 0) + (u?.output_tokens ?? 0),
+      }))
+      await update($, totals, t => ({
+        messages: t?.messages ?? 0,
+        calls: (t?.calls ?? 0) + 1,
+        resent: (t?.resent ?? 0) + (u?.cache_read_input_tokens ?? 0),
+        written: (t?.written ?? 0) + (u?.cache_creation_input_tokens ?? 0),
+        fresh: (t?.fresh ?? 0) + (u?.input_tokens ?? 0),
+        output: (t?.output ?? 0) + (u?.output_tokens ?? 0),
       }))
       await refresh($, options, false)
     }
@@ -421,6 +437,7 @@ export const register: Register = (on, options) => {
     const hist = await read($, history)
     const t = await read($, todo)
     const sum = progress(t)
+    const tot = await read($, totals)
     const width = Math.max(10, Math.min(MAX_HISTORY, (e.viewport?.columns ?? 40) - 4))
 
     return (
@@ -445,6 +462,20 @@ export const register: Register = (on, options) => {
             API-equivalent cost ${d.usd.toFixed(2)}
             {d.turnUsd !== undefined ? ` (last turn +$${d.turnUsd.toFixed(2)})` : ''}
           </Text>
+        )}
+        <Text> </Text>
+        <Text bold>This session, in total</Text>
+        {tot === null || tot.calls === 0 ? (
+          <Text dimColor>Nothing counted yet (counts from when the mod loaded).</Text>
+        ) : (
+          <Box flexDirection="column">
+            <Text>{tot.messages} messages · {tot.calls} model requests</Text>
+            <Text>{k(tot.resent)} re-read · {k(tot.fresh + tot.written)} new · {k(tot.output)} out</Text>
+            <Text dimColor>
+              Re-read sums the context sent again on every request, so it
+              dwarfs the {k(d.tokens)} the window holds now.
+            </Text>
+          </Box>
         )}
         <Text> </Text>
         <Text bold>Git</Text>
