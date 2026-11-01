@@ -146,6 +146,8 @@ async function publish($: EngineInterface, options: Readonly<Record<string, unkn
 let lastPrFetch = 0
 
 let lastRefresh = 0
+// The session's cost when the current message began; null before the first.
+let turnBaseUsd: number | null = null
 
 async function refresh(
   $: EngineInterface,
@@ -192,9 +194,11 @@ async function refresh(
     tokens,
     window,
     usd: usage.cost?.usd,
+    // What the current (or last) message has cost so far: the session total
+    // now less the total when that message began.
     turnUsd:
-      usage.cost !== undefined && previous?.usd !== undefined && usage.cost.usd > previous.usd
-        ? usage.cost.usd - previous.usd
+      usage.cost !== undefined && turnBaseUsd !== null && usage.cost.usd >= turnBaseUsd
+        ? usage.cost.usd - turnBaseUsd
         : previous?.turnUsd,
     limits,
     dir,
@@ -225,6 +229,7 @@ export const register: Register = (on, options) => {
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       calls = 0
+      turnBaseUsd = (await $.session.usage()).cost?.usd ?? null
       await update($, spend, () => ({ calls: 0, resent: 0, written: 0, fresh: 0, output: 0 }))
     }
 
