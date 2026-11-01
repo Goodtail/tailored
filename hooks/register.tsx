@@ -145,7 +145,17 @@ async function publish($: EngineInterface, options: Readonly<Record<string, unkn
 
 let lastPrFetch = 0
 
-async function refresh($: EngineInterface, options: Readonly<Record<string, unknown>>, force: boolean) {
+let lastRefresh = 0
+
+async function refresh(
+  $: EngineInterface,
+  options: Readonly<Record<string, unknown>>,
+  force: boolean,
+  isTurnEnd = false,
+) {
+  // A turn with many steps refreshes after each; keep git and gh calm.
+  if (!force && !isTurnEnd && Date.now() - lastRefresh < 1500) return
+  lastRefresh = Date.now()
   const usage = await $.session.usage()
   const { tokens, window, percent } = usage.context
   if (tokens === undefined || percent === undefined) return
@@ -195,7 +205,7 @@ async function refresh($: EngineInterface, options: Readonly<Record<string, unkn
     prsNote,
   }
   await update($, deck, () => next)
-  await update($, history, list => [...list, percent].slice(-MAX_HISTORY))
+  if (isTurnEnd || force) await update($, history, list => [...list, percent].slice(-MAX_HISTORY))
   $.ui.status(isStatusOn(options) ? statusLine(next, await read($, todo), options) : undefined)
 
   const warnAt = typeof options.warnPercent === 'number' ? options.warnPercent : 80
@@ -213,15 +223,39 @@ export const register: Register = (on, options) => {
   let calls = 0
 
   on('turn.start', async ($, e, next) => {
-    if (e.agentId === undefined) calls = 0
+    if (e.agentId === undefined) {
+      calls = 0
+      await update($, spend, () => ({ calls: 0, resent: 0, written: 0, fresh: 0, output: 0 }))
+    }
 
     return next(e)
   })
 
+  // After each model request: add its tokens to this message's spend, and
+  // refresh the figures so the band moves while Claude is still working.
   on('turn.step', async function* ($, e, next) {
-    if (e.agentId === undefined) calls += 1
+    const res = yield* next(e)
+    if (e.agentId === undefined) {
+      calls += 1
+      const u = res.usage
+      await update($, spend, row => ({
+        calls,
+        resent: (row?.resent ?? 0) + (u?.cache_read_input_tokens ?? 0),
+        written: (row?.written ?? 0) + (u?.cache_creation_input_tokens ?? 0),
+        fresh: (row?.fresh ?? 0) + (u?.input_tokens ?? 0),
+        output: (row?.output ?? 0) + (u?.output_tokens ?? 0),
+      }))
+      await refresh($, options, false)
+    }
 
-    return yield* next(e)
+    return res
+  })
+
+  // A switch with /model is not a turn: re-read the model at once.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    await refresh($, options, true)
+
+    return next(e)
   })
 
   on('session.start', async ($, e, next) => {
@@ -246,7 +280,7 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId === undefined && e.usage !== undefined) {
+    if (e.agentId === undefined && e.usage !== undefined && calls === 0) {
       const u = e.usage
       const row: Spend = {
         calls: Math.max(1, calls),
@@ -257,7 +291,7 @@ export const register: Register = (on, options) => {
       }
       await update($, spend, () => row)
     }
-    await refresh($, options, false)
+    await refresh($, options, false, true)
 
     return next(e)
   })
@@ -310,6 +344,7 @@ export const register: Register = (on, options) => {
     if (!isBandOn(options) || e.props.hasSurvey || d === null) return next(e)
 
     const t = progress(await read($, todo))
+    const model = await $.session.model()
     const { Box, Text } = $.ui.resolve(e)
     const mine = d.prs?.find(p => p.branch === d.branch)
     const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
@@ -317,7 +352,7 @@ export const register: Register = (on, options) => {
     const sp = await read($, spend)
     // Columns the first row already holds, so the path gets what is left.
     const leftLen =
-      3 + prettyModel(d.model).length +
+      3 + prettyModel(model).length +
       (d.branch !== null ? 5 + d.branch.length + (d.worktree !== null ? 6 + d.worktree.length : 0) : 0) +
       (d.changes > 0 ? 2 + String(d.changes).length : 0) +
       (mine !== undefined ? 8 + String(mine.number).length : 0) +
@@ -327,7 +362,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column">
         <Box>
           <Text>🤖 </Text>
-          <Text bold color="magenta">{prettyModel(d.model)}</Text>
+          <Text bold color="magenta">{prettyModel(model)}</Text>
           {d.branch !== null && (
             <Text color="cyan">  🌿 {d.branch}{d.worktree !== null ? ` (wt ${d.worktree})` : ''}</Text>
           )}
