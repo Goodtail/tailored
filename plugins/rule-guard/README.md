@@ -11,6 +11,9 @@ pattern matching and no model call.
 | --- | :-: | --- |
 | AI attribution | on | Refuses `git commit`, `git tag`, `gh pr`, `gh issue` and `gh release` commands whose text has a `Co-Authored-By: Claude` trailer or a `Generated with Claude Code` footer. Claude is told to remove the line and run the command again. |
 | Destructive commands | on | Asks you first before `rm -rf` on a broad target, `git push --force`, `git reset --hard`, `git clean -f`, `DROP TABLE/DATABASE` and `chmod -R 777`. With nobody to ask (`claude -p`), the command is refused. |
+| Korean commit subject | off | Refuses a `git commit` whose subject has no Hangul. |
+| Commit subject style | off | Refuses a subject that does not match a regular expression you give, such as `^\[(기능\|수정\|문서\|리팩터링\|테스트\|기타)\] `. |
+| Subagent model | off | A subagent started with no model gets the one you name (for example `sonnet`) instead of inheriting the session's, except for types you keep (default `architect,planner`). |
 | Your own pattern | off | Refuses commands that match a regular expression you give, optionally only when the session's folder path contains a fragment you name (for example only inside a company repository). |
 
 ## Install
@@ -29,12 +32,17 @@ Then set the options in `/plugin configure rule-guard@goodtail-mods`.
 | --- | --- | --- |
 | `blockAiAttribution` | `true` | The AI attribution guard. |
 | `confirmDestructive` | `true` | Ask before destructive commands. |
+| `requireKoreanCommit` | `false` | Require Hangul in the commit subject. |
+| `commitSubjectPattern` | empty | Regex the commit subject must match. |
+| `defaultSubagentModel` | empty | `sonnet`, `haiku`, `opus` or `fable`. |
+| `subagentKeepModelFor` | `architect,planner` | Subagent types that keep their own model. |
 | `customDenyPattern` | empty | A regular expression; a matching command is refused. Example: `9VP73Q9QX3`. |
 | `customDenyScope` | empty | Comma-separated path fragments (`/company/`, a project name). The custom pattern applies only when the session's folder contains one. Empty means everywhere. |
 | `customDenyMessage` | a default | What Claude is told when the custom pattern blocks a command. |
 
 ## Limits
 
+- Commit rules read the message from `-m "..."` or a heredoc. A commit with `-F file`, an editor or `--amend` and no message is not judged.
 - It reads the command text only. A commit message kept in a file
   (`git commit -F message.txt`) is not read, so the file's content is not checked.
 - Pattern matching can be got around by a command written another way. Treat it

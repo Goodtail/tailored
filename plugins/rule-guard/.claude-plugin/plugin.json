@@ -1,6 +1,6 @@
 {
   "name": "rule-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Enforces your rules on Bash commands in code, not by asking nicely: blocks AI attribution in commits and PRs, asks before destructive commands, and blocks patterns you choose, optionally only under certain folders.",
   "author": {
     "name": "Goodtail"
@@ -44,6 +44,30 @@
       "title": "Message for the custom block",
       "description": "What Claude is told when the custom pattern blocks a command.",
       "default": "This command matches a pattern you blocked."
+    },
+    "requireKoreanCommit": {
+      "type": "boolean",
+      "title": "Require a Korean commit subject",
+      "description": "Refuse a git commit whose subject has no Hangul. Only commits whose message is on the command line (-m or a heredoc) are read.",
+      "default": false
+    },
+    "commitSubjectPattern": {
+      "type": "string",
+      "title": "Commit subject must match (regex)",
+      "description": "A regular expression the commit subject must match, for example ^\\[(기능|수정|문서|리팩터링|테스트|기타)\\] . Empty turns it off.",
+      "default": ""
+    },
+    "defaultSubagentModel": {
+      "type": "string",
+      "title": "Model for subagents that name none",
+      "description": "sonnet, haiku, opus or fable. A subagent started with no model gets this one instead of inheriting the session's. Empty turns it off.",
+      "default": ""
+    },
+    "subagentKeepModelFor": {
+      "type": "string",
+      "title": "Subagent types that keep their own model",
+      "description": "Comma-separated words; a subagent type containing one is left alone. Example: architect,planner.",
+      "default": "architect,planner"
     }
   }
 }

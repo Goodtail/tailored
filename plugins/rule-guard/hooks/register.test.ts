@@ -48,3 +48,33 @@ test('the custom pattern is ignored outside its folders', { options: { customDen
   const ran = await $.tool.call({ tool: 'Bash', command: 'xcodebuild DEVELOPMENT_TEAM=9VP73Q9QX3' })
   expect(ran.deny).toBeUndefined()
 })
+
+test('a Korean-only commit rule refuses an English subject', { options: { requireKoreanCommit: true } }, async ($, on) => {
+  stub(on)
+  const bad = await $.tool.call({ tool: 'Bash', command: 'git commit -m "fix login bug"' })
+  expect(bad.deny).toContain('Korean')
+  const good = await $.tool.call({ tool: 'Bash', command: 'git commit -m "로그인 오류 수정"' })
+  expect(good.deny).toBeUndefined()
+})
+
+test('the commit subject pattern reads a heredoc too', { options: { commitSubjectPattern: '^\\[(기능|수정)\\] ' } }, async ($, on) => {
+  stub(on)
+  const heredoc = "git commit -m \"$(cat <<'EOF'\n[기능] 로그인 추가\n\n본문\nEOF\n)\""
+  const ok = await $.tool.call({ tool: 'Bash', command: heredoc })
+  expect(ok.deny).toBeUndefined()
+  const bad = await $.tool.call({ tool: 'Bash', command: 'git commit -m "feat: add login"' })
+  expect(bad.deny).toContain('must match')
+})
+
+test('a subagent with no model gets the chosen one, an architect keeps its own', { options: { defaultSubagentModel: 'sonnet', subagentKeepModelFor: 'architect' } }, async ($, on) => {
+  let seen: { model?: string } = {}
+  on('session.cwd', () => ({ value: '/work/app' }))
+  on('tool.call', (_, e) => {
+    seen = e as { model?: string }
+    return { result: {} }
+  })
+  await $.tool.call({ tool: 'Agent', description: 'do it', prompt: 'p', subagent_type: 'executor' })
+  expect(seen.model).toBe('sonnet')
+  await $.tool.call({ tool: 'Agent', description: 'design', prompt: 'p', subagent_type: 'oh-my-claudecode:architect' })
+  expect(seen.model).toBeUndefined()
+})
