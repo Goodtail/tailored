@@ -64,7 +64,7 @@ Set them in the `/plugin` config menu for `session-deck`.
 | `showDirectory` | `true` | Show the working directory next to the branch. |
 | `showPrs` | `true` | List open pull requests. |
 | `warnPercent` | `80` | Context percent that raises the toast. |
-| `cacheTtl` | `5m` | Prompt cache lifetime (`5m` or `1h`) for the cache countdown in the band. |
+| `cacheTtl` | `1h` | Prompt cache lifetime (`1h` or `5m`) for the cache countdown in the band. A `/model` switch lets Claude Code report the real value, which is remembered and wins over this. |
 | `notifyAfterSeconds` | `60` | Send a notification and toast when a message takes at least this long. `0` turns it off. |
 | `briefing` | `true` | One-line summary (branch, changes, PRs, handoff note) when a session starts. |
 | `notifyOnPermission` | `true` | Notify when Claude waits for a permission or an answer. |

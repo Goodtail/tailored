@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -56,8 +56,8 @@
     "cacheTtl": {
       "type": "string",
       "title": "Prompt cache lifetime",
-      "description": "5m or 1h. Drives the cache countdown. A /model switch lets Claude Code report the real value, which then wins over this.",
-      "default": "5m",
+      "description": "1h or 5m. Drives the cache countdown. Claude Code sessions normally cache for an hour, so 1h is the default; pick 5m only if your setup caches for five minutes. A /model switch lets Claude Code report the real value, which is then remembered and wins over this.",
+      "default": "1h",
       "options": [
         "5m",
         "1h"

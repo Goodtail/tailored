@@ -399,7 +399,10 @@ export const register: Register = (on, options) => {
 
   // A switch with /model is not a turn: re-read the model at once.
   on('classic.PostModelSwitch', async ($, e, next) => {
-    if (e.cache_ttl === '1h' || e.cache_ttl === '5m') await update($, seenTtl, () => e.cache_ttl)
+    if (e.cache_ttl === '1h' || e.cache_ttl === '5m') {
+      await update($, seenTtl, () => e.cache_ttl)
+      await $.store.set('cacheTtl', e.cache_ttl)
+    }
     // A switch drops the warm cache: the next request writes the context again.
     if (e.prompt_cache_warm && e.context_tokens >= 50_000) {
       $.ui.toast(
@@ -427,6 +430,9 @@ export const register: Register = (on, options) => {
     // Redraw now and then so the cache countdown moves between messages.
     $.clock.every(10_000, () => $.ui.invalidate('ui.render'))
     await refresh($, options, true)
+
+    const remembered = await $.store.get('cacheTtl')
+    if (remembered === '1h' || remembered === '5m') await update($, seenTtl, () => remembered)
 
     // The first time this mod ever loads, say what it is and how to tune it. Once.
     if (e.isInteractive && (await $.store.get('onboarded')) === undefined) {
@@ -606,7 +612,8 @@ export const register: Register = (on, options) => {
     const last = await read($, lastAt)
     // The engine's own word (seen at a model switch) beats the option.
     const seen = await read($, seenTtl)
-    const ttlMs = ((seen ?? options.cacheTtl) === '1h' ? 60 : 5) * 60_000
+    // 1h unless the engine or the option says 5m: Claude Code sessions cache for an hour.
+    const ttlMs = ((seen ?? options.cacheTtl ?? '1h') === '5m' ? 5 : 60) * 60_000
     const left = last === null ? null : ttlMs - (Date.now() - last)
     const compactAt = typeof options.compactHintPercent === 'number' ? options.compactHintPercent : 50
     const cachePrice = priceOf(model)?.cache
