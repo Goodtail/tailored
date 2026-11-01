@@ -37,7 +37,6 @@ declare module 'claude-code' {
       deck: Shaped<Deck | null>
       history: Shaped<number[]>
       todo: Shaped<Todo | null>
-      isHidden: boolean
       warned: boolean
     }
   }

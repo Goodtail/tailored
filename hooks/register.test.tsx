@@ -62,6 +62,21 @@ test('the pane shows model, context, limit, worktree branch and PR', async ($, o
   await ui.unmount()
 })
 
+test('the band draws three labeled rows above the prompt', async ($, on) => {
+  stubEngine(on)
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({
+    plugin: 'session-deck',
+    component: 'AbovePrompt',
+    surface: 'terminal',
+    props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 } },
+  })
+  expect((await ui.find({ type: 'Text', text: /Context/ }))?.text).toContain('Context')
+  expect((await ui.find({ type: 'Text', text: /feature\/x/ }))?.text).toContain('wt app-wt')
+  await ui.unmount()
+})
+
 test('before any response the pane says so', async ($, on) => {
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })

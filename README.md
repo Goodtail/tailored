@@ -5,7 +5,9 @@ you are on, how full the context window is, how much of your usage limit is
 left, which git branch and worktree you are in, which pull requests are open,
 and how far along Claude's todo list is.
 
-It draws a one-line band above the prompt and a detail pane (`/deck`).
+It draws a three-row colored band above the prompt (emoji labels, color-coded
+values) and a detail pane (`/deck`). An optional plain-text line under the prompt
+is available too.
 
 ## What it shows
 
@@ -53,6 +55,7 @@ Set them in the `/plugin` config menu for `session-deck`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
+| `position` | `band` | `band` colored rows above the prompt, `status` one plain line under it, or `both`. |
 | `showDirectory` | `false` | Show the working directory. |
 | `showPrs` | `true` | List open pull requests. |
 | `warnPercent` | `80` | Context percent that raises the toast. |

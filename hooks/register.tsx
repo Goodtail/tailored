@@ -19,7 +19,6 @@ const history = atom({ plugin: 'session-deck', key: 'history' } as const, [], {
 const todo = atom({ plugin: 'session-deck', key: 'todo' } as const, null, {
   shape: 'todo-1',
 })
-const isHidden = atom({ plugin: 'session-deck', key: 'isHidden' } as const, false)
 const warned = atom({ plugin: 'session-deck', key: 'warned' } as const, false)
 
 const bar = (percent: number, width: number) => {
@@ -41,11 +40,21 @@ const resets = (iso?: string) => {
   return m >= 60 ? ` ↻${Math.floor(m / 60)}h${m % 60 ? `${m % 60}m` : ''}` : ` ↻${m}m`
 }
 
+const prettyModel = (id: string) => {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id)
+  if (m === null) return id
+  return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
+}
+
+const isBandOn = (o: Readonly<Record<string, unknown>>) => o.position !== 'status'
+const isStatusOn = (o: Readonly<Record<string, unknown>>) =>
+  o.position === 'status' || o.position === 'both'
+
 function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, unknown>>): string {
   const mine = d.prs?.find(p => p.branch === d.branch)
   const limit = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
   const parts = [
-    `${d.model}  ${bar(d.percent, 8)} ${d.percent}% ${k(d.tokens)}/${k(d.window)}`,
+    `${prettyModel(d.model)}  ${d.percent}% ${k(d.tokens)}/${k(d.window)}`,
     limit !== undefined ? `${limitName(limit.kind)} ${limit.percent}%${resets(limit.resetsAt)}` : '',
     d.usd !== undefined ? `$${d.usd.toFixed(2)}${d.turnUsd !== undefined ? ` (+${d.turnUsd.toFixed(2)})` : ''}` : '',
     d.branch !== null
@@ -149,7 +158,7 @@ async function refresh($: EngineInterface, options: Readonly<Record<string, unkn
   }
   await update($, deck, () => next)
   await update($, history, list => [...list, percent].slice(-MAX_HISTORY))
-  $.ui.status(statusLine(next, await read($, todo), options))
+  $.ui.status(isStatusOn(options) ? statusLine(next, await read($, todo), options) : undefined)
 
   const warnAt = typeof options.warnPercent === 'number' ? options.warnPercent : 80
   const isWarned = await read($, warned)
@@ -174,7 +183,6 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'deck' }, async $ => {
     const placed = await $.ui.open({ id: PANE, title: 'Session deck' })
-    await update($, isHidden, () => false)
     await refresh($, options, true)
 
     return {
@@ -199,38 +207,53 @@ export const register: Register = (on, options) => {
       current: current?.activeForm,
     }))
     const d = await read($, deck)
-    if (d !== null) $.ui.status(statusLine(d, await read($, todo), options))
+    if (d !== null && isStatusOn(options)) $.ui.status(statusLine(d, await read($, todo), options))
 
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const d = await read($, deck)
-    const isBelowOnly = options.position === undefined || options.position === 'below'
-    if (isBelowOnly || e.props.hasSurvey || d === null || (await read($, isHidden))) return next(e)
+    if (!isBandOn(options) || e.props.hasSurvey || d === null) return next(e)
 
     const t = await read($, todo)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
     const mine = d.prs?.find(p => p.branch === d.branch)
-    const limit = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
+    const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
+    const week = d.limits.find(l => l.kind === 'seven_day')
 
     return (
-      <Box>
-        <Text bold>{d.model}</Text>
-        <Text color={tone(d.percent)}> {bar(d.percent, 8)} {d.percent}%</Text>
-        <Text dimColor> {k(d.tokens)}/{k(d.window)}</Text>
-        {limit !== undefined && (
-          <Text color={tone(limit.percent)}> {limitName(limit.kind)} {limit.percent}%</Text>
-        )}
-        {d.branch !== null && (
-          <Text> ⎇ {d.branch}{d.worktree !== null ? ` (wt ${d.worktree})` : ''}{d.changes > 0 ? ` ±${d.changes}` : ''}</Text>
-        )}
-        {mine !== undefined && <Text color="cyan"> PR#{mine.number}</Text>}
-        {options.showDirectory === true && <Text dimColor> {base(d.dir)}</Text>}
-        {t !== null && t.total > 0 && <Text> ☑ {t.done}/{t.total}</Text>}
-        <Text> </Text>
-        <Button key="open" label="Deck" onPress={() => $.ui.open({ id: PANE, title: 'Session deck' })} />
-        <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
+      <Box flexDirection="column">
+        <Box>
+          <Text>🤖 </Text>
+          <Text bold color="magenta">{prettyModel(d.model)}</Text>
+          {d.branch !== null && (
+            <Text color="cyan">  🌿 {d.branch}{d.worktree !== null ? ` (wt ${d.worktree})` : ''}</Text>
+          )}
+          {d.changes > 0 && <Text color="yellow"> ±{d.changes}</Text>}
+          {mine !== undefined && <Text color="blue">  🔀 PR#{mine.number}</Text>}
+          {d.prs !== null && d.prs.length > 0 && <Text dimColor> ({d.prs.length} open)</Text>}
+          {options.showDirectory === true && <Text dimColor>  📁 {base(d.dir)}</Text>}
+        </Box>
+        <Box>
+          <Text>🧠 Context </Text>
+          <Text bold color={tone(d.percent)}>{d.percent}%</Text>
+          <Text dimColor> used </Text>
+          <Text color={tone(d.percent)}>[{bar(d.percent, 10)}]</Text>
+          <Text dimColor> {k(d.tokens)}/{k(d.window)}</Text>
+          {five !== undefined && (
+            <Text>  ⏳ <Text color={tone(five.percent)}>{limitName(five.kind)} {five.percent}%</Text><Text dimColor>{resets(five.resetsAt)}</Text></Text>
+          )}
+          {week !== undefined && <Text color={tone(week.percent)}>  7d {week.percent}%</Text>}
+        </Box>
+        <Box>
+          {d.usd !== undefined && (
+            <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text>{d.turnUsd !== undefined ? <Text dimColor> (+${d.turnUsd.toFixed(2)})</Text> : ''}<Text dimColor> API-equivalent</Text></Text>
+          )}
+          {t !== null && t.total > 0 && (
+            <Text>  ☑ <Text bold>{t.done}/{t.total}</Text>{t.current ? <Text dimColor> {t.current}</Text> : ''}</Text>
+          )}
+        </Box>
       </Box>
     )
   })
@@ -248,7 +271,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Text bold>Model</Text>
-        <Text>{d.model}</Text>
+        <Text>{prettyModel(d.model)}{prettyModel(d.model) !== d.model ? ` (${d.model})` : ''}</Text>
         <Text> </Text>
         <Text bold>Context</Text>
         <Text color={tone(d.percent)}>{bar(d.percent, 20)} {d.percent}%</Text>
