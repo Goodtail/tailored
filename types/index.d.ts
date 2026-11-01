@@ -50,6 +50,9 @@ export type Spend = {
 /** A session's spend in total: the per-message Spend summed, with a count. */
 export type Totals = Spend & { messages: number }
 
+/** The costliest message so far. */
+export type Peak = { usd: number; calls: number; resent: number }
+
 export type Todo = { items: TodoItem[] }
 
 declare module 'claude-code' {
@@ -60,6 +63,8 @@ declare module 'claude-code' {
       todo: Shaped<Todo | null>
       spend: Shaped<Spend | null>
       totals: Shaped<Totals | null>
+      lastAt: number | null
+      peak: Shaped<Peak | null>
       warned: boolean
     }
   }

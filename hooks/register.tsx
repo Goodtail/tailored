@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Limit, Pr, Spend, Todo, TodoItem, Totals } from '../types'
+import type { Deck, Limit, Peak, Pr, Spend, Todo, TodoItem, Totals } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -87,6 +87,22 @@ const spend = atom({ plugin: 'session-deck', key: 'spend' } as const, null, {
 const totals = atom({ plugin: 'session-deck', key: 'totals' } as const, null, {
   shape: 'totals-1',
 })
+
+// When the last model request finished: the prompt cache's clock starts there.
+const lastAt = atom({ plugin: 'session-deck', key: 'lastAt' } as const, null)
+// The costliest message so far.
+const peak = atom({ plugin: 'session-deck', key: 'peak' } as const, null, {
+  shape: 'peak-1',
+})
+
+const clock = (ms: number) => {
+  const total = Math.max(0, Math.round(ms / 1000))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+const durationText = (ms: number) => {
+  const sec = Math.round(ms / 1000)
+  return sec >= 60 ? `${Math.floor(sec / 60)}m ${sec % 60}s` : `${sec}s`
+}
 
 const homeShort = (path: string) => path.replace(/^\/(Users|home)\/[^/]+/, '~')
 
@@ -254,10 +270,14 @@ async function refresh(
 export const register: Register = (on, options) => {
   // Model requests the main loop made for the current message.
   let calls = 0
+  // When the current message began, in $.clock.now()'s milliseconds.
+  let turnStartedAt = 0
+  const ttlMs = (options.cacheTtl === '1h' ? 60 : 5) * 60_000
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       calls = 0
+      turnStartedAt = await $.clock.now()
       turnBaseUsd = (await $.session.usage()).cost?.usd ?? null
       await update($, spend, () => ({ calls: 0, resent: 0, written: 0, fresh: 0, output: 0 }))
       await update($, totals, t => ({ ...(t ?? ZERO), messages: (t?.messages ?? 0) + 1 }))
@@ -272,6 +292,7 @@ export const register: Register = (on, options) => {
     const res = yield* next(e)
     if (e.agentId === undefined) {
       calls += 1
+      await update($, lastAt, () => Date.now())
       const u = res.usage
       await update($, spend, row => ({
         calls,
@@ -306,9 +327,35 @@ export const register: Register = (on, options) => {
       name: 'deck',
       description: 'Open the session deck pane (model, context, limits, branch, PRs, todos)',
     })
+    await $.command.register({
+      name: 'deck-stats',
+      description: 'Summarize this session: messages, requests, tokens, cost, costliest message',
+    })
+    // Redraw now and then so the cache countdown moves between messages.
+    $.clock.every(10_000, () => $.ui.invalidate('ui.render'))
     await refresh($, options, true)
 
     return next(e)
+  })
+
+  on('command.run', { command: 'deck-stats' }, async $ => {
+    const tot = await read($, totals)
+    const top = await read($, peak)
+    const d = await read($, deck)
+    if (tot === null || tot.calls === 0) {
+      return { text: 'Nothing counted yet. Stats count from when session-deck loaded.' }
+    }
+    const lines = [
+      `${tot.messages} messages · ${tot.calls} model requests`,
+      `${k(tot.resent)} re-read · ${k(tot.fresh + tot.written)} new · ${k(tot.output)} out`,
+    ]
+    if (d?.usd !== undefined) lines.push(`Session cost $${d.usd.toFixed(2)} (API-equivalent)`)
+    if (top !== null) {
+      lines.push(`Costliest message: $${top.usd.toFixed(2)} · ${top.calls} calls · ${k(top.resent)} re-read`)
+    }
+    if (d !== null) lines.push(`Context now ${d.percent}% (${k(d.tokens)}/${k(d.window)})`)
+
+    return { text: lines.join('\n') }
   })
 
   on('command.run', { command: 'deck' }, async $ => {
@@ -335,6 +382,26 @@ export const register: Register = (on, options) => {
       await update($, spend, () => row)
     }
     await refresh($, options, false, true)
+
+    if (e.agentId === undefined) {
+      const d = await read($, deck)
+      const row = await read($, spend)
+      if (d?.turnUsd !== undefined && row !== null) {
+        const usdNow = d.turnUsd
+        await update($, peak, p =>
+          p === null || usdNow > p.usd
+            ? { usd: usdNow, calls: row.calls, resent: row.resent }
+            : p,
+        )
+      }
+      const after = typeof options.notifyAfterSeconds === 'number' ? options.notifyAfterSeconds : 60
+      const took = (await $.clock.now()) - turnStartedAt
+      if (after > 0 && turnStartedAt > 0 && took >= after * 1000) {
+        const cost = d?.turnUsd !== undefined ? ` · +$${d.turnUsd.toFixed(2)}` : ''
+        $.ui.toast(`Done in ${durationText(took)}${cost}`)
+        void $.ui.notify(`Finished in ${durationText(took)}${cost}`, { title: 'Claude Code' })
+      }
+    }
 
     return next(e)
   })
@@ -393,6 +460,8 @@ export const register: Register = (on, options) => {
     const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
     const week = d.limits.find(l => l.kind === 'seven_day' && l !== five)
     const sp = await read($, spend)
+    const last = await read($, lastAt)
+    const left = last === null ? null : ttlMs - (Date.now() - last)
     const compactAt = typeof options.compactHintPercent === 'number' ? options.compactHintPercent : 50
     const cachePrice = priceOf(model)?.cache
     const perCall = cachePrice !== undefined ? (d.tokens / 1_000_000) * cachePrice : null
@@ -437,6 +506,16 @@ export const register: Register = (on, options) => {
           )}
         </Box>
         <Box>
+          {left !== null && (
+            <Text>
+              {left > 0 ? (
+                <Text color={left > ttlMs * 0.4 ? 'green' : left > ttlMs * 0.15 ? 'yellow' : 'red'}>🧊 cache {clock(left)} left</Text>
+              ) : (
+                <Text color="red">🧊 cache expired: the next request re-caches {k(d.tokens)}</Text>
+              )}
+              {sp !== null || t !== null ? '  ' : ''}
+            </Text>
+          )}
           {sp !== null && (
             <Text>
               📨 {sp.calls} call{sp.calls === 1 ? '' : 's'}

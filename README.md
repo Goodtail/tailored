@@ -49,6 +49,7 @@ Requires Claude Code v2.1.287 or later.
   **Deck** opens the pane, **Hide** removes the band.
 - `/deck` opens the pane (and brings back a hidden band).
 - **Refresh** in the pane re-reads git and pull requests.
+- `/deck-stats` answers with a text summary: messages, requests, tokens, session cost and the costliest message.
 
 ## Options
 
@@ -60,6 +61,8 @@ Set them in the `/plugin` config menu for `session-deck`.
 | `showDirectory` | `true` | Show the working directory next to the branch. |
 | `showPrs` | `true` | List open pull requests. |
 | `warnPercent` | `80` | Context percent that raises the toast. |
+| `cacheTtl` | `5m` | Prompt cache lifetime (`5m` or `1h`) for the cache countdown in the band. |
+| `notifyAfterSeconds` | `60` | Send a notification and toast when a message takes at least this long. `0` turns it off. |
 | `compactHintPercent` | `50` | Context percent from which the band suggests `/compact` or a new session, with the cost of re-reading it per request. |
 
 ## Requirements and privacy

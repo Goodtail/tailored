@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -52,6 +52,22 @@
       "title": "Compact hint at (%)",
       "description": "Show a hint to /compact or start a new session once the context passes this percent.",
       "default": 50
+    },
+    "cacheTtl": {
+      "type": "string",
+      "title": "Prompt cache lifetime",
+      "description": "How long the prompt cache lives after a request: 5m (the API default) or 1h. Drives the cache countdown.",
+      "default": "5m",
+      "options": [
+        "5m",
+        "1h"
+      ]
+    },
+    "notifyAfterSeconds": {
+      "type": "number",
+      "title": "Notify when a message takes longer than (seconds)",
+      "description": "Send a notification and toast when a message finishes after at least this many seconds. 0 turns it off.",
+      "default": 60
     }
   }
 }
