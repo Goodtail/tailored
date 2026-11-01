@@ -428,6 +428,12 @@ export const register: Register = (on, options) => {
     $.clock.every(10_000, () => $.ui.invalidate('ui.render'))
     await refresh($, options, true)
 
+    // The first time this mod ever loads, say what it is and how to tune it. Once.
+    if (e.isInteractive && (await $.store.get('onboarded')) === undefined) {
+      $.ui.log('session-deck is on: the deck above the prompt fills in after Claude\'s first reply. /deck opens the details, /handoff writes a note for the next session, /deck-stats sums the session. Tune it with /plugin configure session-deck@tailored.')
+      await $.store.set('onboarded', true)
+    }
+
     if (options.briefing !== false && e.isInteractive) {
       const d = await read($, deck)
       if (d !== null && d.branch !== null) {

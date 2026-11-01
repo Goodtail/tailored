@@ -1,6 +1,6 @@
 {
   "name": "rule-guard",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Enforces your rules on Bash commands in code, not by asking nicely: blocks AI attribution in commits and PRs, asks before destructive commands, and blocks patterns you choose, optionally only under certain folders.",
   "author": {
     "name": "Goodtail"
@@ -17,57 +17,58 @@
   "userConfig": {
     "blockAiAttribution": {
       "type": "boolean",
-      "title": "Block AI attribution",
-      "description": "Refuse git commit, gh pr and git tag commands whose text carries a Co-Authored-By: Claude trailer or a 'Generated with Claude Code' footer. Claude is told to remove it and retry.",
+      "title": "Block AI attribution in commits and PRs",
+      "description": "On: a git commit, tag or gh pr command that carries \"Co-Authored-By: Claude\" or \"Generated with Claude Code\" is refused, and Claude removes the line and retries.",
       "default": true
     },
     "confirmDestructive": {
       "type": "boolean",
       "title": "Ask before destructive commands",
-      "description": "Ask you first before rm -rf on a broad target, git push --force, git reset --hard, git clean -f, DROP TABLE/DATABASE and chmod -R 777.",
+      "description": "On: you are asked first before rm -rf on a broad target, git push --force, git reset --hard, git clean -f, DROP TABLE/DATABASE and chmod -R 777.",
       "default": true
     },
     "customDenyPattern": {
       "type": "string",
       "title": "Block commands matching (regex)",
-      "description": "A regular expression. A Bash command that matches is refused. Example: 9VP73Q9QX3 to keep one Apple team ID out of commands. Empty turns it off.",
+      "description": "Your own rule: a Bash command that matches this pattern is refused. Example: 9VP73Q9QX3 to keep an Apple team ID out of commands. Leave empty to skip.",
       "default": ""
     },
     "customDenyScope": {
       "type": "string",
-      "title": "Only when the session folder contains",
-      "description": "Comma-separated path fragments, such as /company/ or a project name. The custom pattern applies only when the session's folder path contains one of them. Empty means everywhere.",
+      "title": "Only when the folder contains",
+      "description": "Limits your own rule to some folders. Words separated by commas, such as /company/ or a project name; the rule applies only when the session's folder path contains one. Empty means everywhere.",
       "default": ""
     },
     "customDenyMessage": {
       "type": "string",
-      "title": "Message for the custom block",
-      "description": "What Claude is told when the custom pattern blocks a command.",
+      "title": "Message when your rule blocks",
+      "description": "What Claude is told when your own rule refuses a command. Say what to do instead.",
       "default": "This command matches a pattern you blocked."
     },
     "requireKoreanCommit": {
       "type": "boolean",
-      "title": "Require a Korean commit subject",
-      "description": "Refuse a git commit whose subject has no Hangul. Only commits whose message is on the command line (-m or a heredoc) are read.",
+      "title": "Commit subject must be in Korean",
+      "description": "On: a git commit whose subject has no Hangul is refused. Only messages typed on the command line (-m or a heredoc) are read.",
       "default": false
     },
     "commitSubjectPattern": {
       "type": "string",
-      "title": "Commit subject must match (regex)",
-      "description": "A regular expression the commit subject must match, for example ^\\[(기능|수정|문서|리팩터링|테스트|기타)\\] . Empty turns it off.",
+      "title": "Commit subject style (regex)",
+      "description": "A pattern the commit subject must match. Example: ^\\[[^\\]]*[가-힣][^\\]]*\\]\\s requires a Korean tag in brackets such as [기능] at the start. Leave empty to skip.",
       "default": ""
     },
     "defaultSubagentModel": {
       "type": "string",
-      "title": "Model for subagents that name none",
-      "description": "sonnet, haiku, opus or fable. A subagent started with no model gets this one instead of inheriting the session's. Empty turns it off.",
+      "title": "Default model for subagents",
+      "description": "sonnet, haiku, opus or fable. A subagent started without a model gets this one instead of the session's (often the priciest). Leave empty to skip.",
       "default": ""
     },
     "subagentKeepModelFor": {
       "type": "string",
-      "title": "Subagent types that keep their own model",
-      "description": "Comma-separated words; a subagent type containing one is left alone. Example: architect,planner.",
+      "title": "Subagents that keep their own model",
+      "description": "Words separated by commas. A subagent type that contains one is left alone. Example: architect,planner.",
       "default": "architect,planner"
     }
-  }
+  },
+  "types": "./types/index.d.ts"
 }

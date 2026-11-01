@@ -78,3 +78,11 @@ test('a subagent with no model gets the chosen one, an architect keeps its own',
   await $.tool.call({ tool: 'Agent', description: 'design', prompt: 'p', subagent_type: 'oh-my-claudecode:architect' })
   expect(seen.model).toBeUndefined()
 })
+
+test('/guard-status lists the rules and what was refused', async ($, on) => {
+  stub(on)
+  await $.tool.call({ tool: 'Bash', command: 'git commit -m "x\n\nCo-Authored-By: Claude <a@b.c>"' })
+  const out = await $.command.run({ command: 'guard-status' })
+  expect(out.text).toContain('AI attribution')
+  expect(out.text).toContain('Refused 1 time')
+})

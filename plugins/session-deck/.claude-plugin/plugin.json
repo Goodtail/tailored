@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -21,7 +21,7 @@
     "position": {
       "type": "string",
       "title": "Where to show the deck",
-      "description": "band: colored rows above the prompt. status: one plain line under the prompt (the status line takes no colors or line breaks). both: the band plus that line.",
+      "description": "band: colored rows above the prompt (recommended). status: one plain line under the prompt, no colors. both: the band plus that line.",
       "default": "band",
       "options": [
         "band",
@@ -31,32 +31,32 @@
     },
     "showDirectory": {
       "type": "boolean",
-      "title": "Show directory",
-      "description": "Show the working directory next to the branch, trimmed from the left when long.",
+      "title": "Show the working directory",
+      "description": "Next to the branch, shortened from the left when long so the nearest folders stay.",
       "default": true
     },
     "showPrs": {
       "type": "boolean",
-      "title": "Show pull requests",
-      "description": "List open pull requests of the repository (needs the GitHub CLI, gh, signed in).",
+      "title": "Show open pull requests",
+      "description": "Lists open PRs of the repository. Needs the GitHub CLI (gh) signed in; without it only this section says so.",
       "default": true
     },
     "warnPercent": {
       "type": "number",
-      "title": "Context warning at (%)",
-      "description": "Show a toast once when the context window passes this percent.",
+      "title": "Warn when the context is this full (%)",
+      "description": "A toast appears once when the context window passes this percent. Default 80.",
       "default": 80
     },
     "compactHintPercent": {
       "type": "number",
-      "title": "Compact hint at (%)",
-      "description": "Show a hint to /compact or start a new session once the context passes this percent.",
+      "title": "Suggest /compact from (%)",
+      "description": "From this context percent the band suggests /compact or a new session and shows what each request costs to re-read. Default 50.",
       "default": 50
     },
     "cacheTtl": {
       "type": "string",
       "title": "Prompt cache lifetime",
-      "description": "How long the prompt cache lives after a request: 5m or 1h. A model switch (/model) lets the engine report the real value, which then wins over this.",
+      "description": "5m or 1h. Drives the cache countdown. A /model switch lets Claude Code report the real value, which then wins over this.",
       "default": "5m",
       "options": [
         "5m",
@@ -65,26 +65,26 @@
     },
     "notifyAfterSeconds": {
       "type": "number",
-      "title": "Notify when a message takes longer than (seconds)",
-      "description": "Send a notification and toast when a message finishes after at least this many seconds. 0 turns it off.",
+      "title": "Notify after a long message (seconds)",
+      "description": "When a message takes at least this long you get a toast and a system notification when it finishes. 0 turns it off. Default 60.",
       "default": 60
     },
     "briefing": {
       "type": "boolean",
-      "title": "Session start briefing",
-      "description": "Print a one-line summary (branch, changes, open PRs, handoff note) when a session starts.",
+      "title": "Briefing when a session starts",
+      "description": "Prints one line when a session starts: branch, uncommitted changes, open PRs and whether a handoff note is waiting.",
       "default": true
     },
     "notifyOnPermission": {
       "type": "boolean",
       "title": "Notify when Claude waits for you",
-      "description": "Send a notification when Claude asks for a permission or an answer.",
+      "description": "A notification when Claude asks for a permission or an answer and is stuck until you reply.",
       "default": true
     },
     "confirmModelSwitchAtTokens": {
       "type": "number",
-      "title": "Ask before a model switch above (tokens)",
-      "description": "When the context is at least this large and the prompt cache is warm, ask before /model drops the cache. 0 turns it off.",
+      "title": "Ask before /model above (tokens)",
+      "description": "When the context is at least this big and the cache is warm, /model asks first, because switching throws the cache away. 0 turns it off. Default 100000.",
       "default": 100000
     }
   }
