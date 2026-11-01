@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -21,7 +21,7 @@
     "position": {
       "type": "string",
       "title": "Where to show the deck",
-      "description": "band: colored rows above the prompt. status: one plain line under the prompt (no colors). both: show both.",
+      "description": "band: colored rows above the prompt. status: colored rows under the prompt (experimental: needs the terminal to read color escapes). both: band above plus a plain one-line status under.",
       "default": "band",
       "options": [
         "band",
