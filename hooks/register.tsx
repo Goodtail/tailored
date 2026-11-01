@@ -406,6 +406,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
+        <Text dimColor>{'─'.repeat(Math.max(10, (e.props.bodyColumns ?? 80) - 1))}</Text>
         <Box>
           <Text>🤖 </Text>
           <Text bold color="magenta">{prettyModel(model)}</Text>
