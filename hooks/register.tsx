@@ -51,6 +51,28 @@ function progress(t: Todo | null) {
   }
 }
 
+// API list prices, US dollars per million tokens (first-party API, as of
+// 2026-10). `cache` is the cache-read price where it is published. A model not
+// listed shows no price rather than a guess.
+const PRICES: { match: RegExp; in: number; out: number; cache?: number }[] = [
+  { match: /^claude-(fable|mythos)-5/, in: 10, out: 50, cache: 0.25 },
+  { match: /^claude-opus-5-5/, in: 4, out: 20, cache: 0.2 },
+  { match: /^claude-opus-(5|4-[678])/, in: 5, out: 25 },
+  { match: /^claude-sonnet-5-5/, in: 2, out: 10, cache: 0.2 },
+  { match: /^claude-sonnet-5/, in: 2, out: 10 },
+  { match: /^claude-sonnet-4-6/, in: 3, out: 15 },
+  { match: /^claude-haiku-5-5/, in: 0.1, out: 0.5 },
+  { match: /^claude-haiku-4-5/, in: 1, out: 5 },
+]
+
+const priceOf = (id: string) => PRICES.find(r => r.match.test(id))
+const usd = (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2).replace(/0$/, '')}`
+const priceText = (id: string) => {
+  const r = priceOf(id)
+  if (r === undefined) return ''
+  return `per 1M: in ${usd(r.in)} · out ${usd(r.out)}${r.cache !== undefined ? ` · cache ${usd(r.cache)}` : ''}`
+}
+
 const prettyModel = (id: string) => {
   const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(id)
   if (m === null) return id
@@ -407,7 +429,7 @@ export const register: Register = (on, options) => {
         </Box>
         <Box>
           {d.usd !== undefined && (
-            <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text>{d.turnUsd !== undefined ? <Text dimColor> (+${d.turnUsd.toFixed(2)})</Text> : ''}<Text dimColor> API-equivalent</Text></Text>
+            <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text>{d.turnUsd !== undefined ? <Text dimColor> (+${d.turnUsd.toFixed(2)})</Text> : ''}<Text dimColor> {priceText(model)}</Text></Text>
           )}
           {sp !== null && (
             <Text>
@@ -463,6 +485,7 @@ export const register: Register = (on, options) => {
             {d.turnUsd !== undefined ? ` (last turn +$${d.turnUsd.toFixed(2)})` : ''}
           </Text>
         )}
+        {priceText(d.model) !== '' && <Text dimColor>{prettyModel(d.model)} {priceText(d.model)}</Text>}
         <Text> </Text>
         <Text bold>This session, in total</Text>
         {tot === null || tot.calls === 0 ? (
