@@ -83,3 +83,23 @@ test('before any response the pane says so', async ($, on) => {
   expect((await ui.find({ type: 'Text' }))?.text).toMatch(/No reading yet/)
   await ui.unmount()
 })
+
+test('the pane lists the todos Claude wrote', async ($, on) => {
+  stubEngine(on)
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'TodoWrite',
+    todos: [
+      { content: 'Write tests', status: 'completed', activeForm: 'Writing tests' },
+      { content: 'Ship it', status: 'in_progress', activeForm: 'Shipping it' },
+      { content: 'Celebrate', status: 'pending', activeForm: 'Celebrating' },
+    ],
+  })
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /Todos/ }))?.text).toBe('Todos (1/3)')
+  expect((await ui.find({ type: 'Text', text: /Shipping it/ }))?.text).toContain('▶')
+  expect((await ui.find({ type: 'Text', text: /Write tests/ }))?.text).toContain('✔')
+  await ui.unmount()
+})

@@ -29,7 +29,13 @@ export type Deck = {
   prsNote?: string
 }
 
-export type Todo = { done: number; total: number; current?: string }
+export type TodoItem = {
+  id: string
+  text: string
+  status: 'pending' | 'in_progress' | 'completed' | 'deleted'
+}
+
+export type Todo = { items: TodoItem[] }
 
 declare module 'claude-code' {
   interface PluginState {

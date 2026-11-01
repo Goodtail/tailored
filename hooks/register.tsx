@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Limit, Pr, Todo } from '../types'
+import type { Deck, Limit, Pr, Todo, TodoItem } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -17,7 +17,7 @@ const history = atom({ plugin: 'session-deck', key: 'history' } as const, [], {
   shape: 'history-1',
 })
 const todo = atom({ plugin: 'session-deck', key: 'todo' } as const, null, {
-  shape: 'todo-1',
+  shape: 'todo-2',
 })
 const warned = atom({ plugin: 'session-deck', key: 'warned' } as const, false)
 
@@ -38,6 +38,17 @@ const resets = (iso?: string) => {
   if (Number.isNaN(ms) || ms <= 0) return ''
   const m = Math.round(ms / 60000)
   return m >= 60 ? ` ↻${Math.floor(m / 60)}h${m % 60 ? `${m % 60}m` : ''}` : ` ↻${m}m`
+}
+
+function progress(t: Todo | null) {
+  if (t === null) return null
+  const items = t.items.filter(i => i.status !== 'deleted')
+  if (items.length === 0) return null
+  return {
+    done: items.filter(i => i.status === 'completed').length,
+    total: items.length,
+    current: items.find(i => i.status === 'in_progress')?.text,
+  }
 }
 
 const prettyModel = (id: string) => {
@@ -62,7 +73,7 @@ function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, un
       : '',
     mine !== undefined ? `PR#${mine.number}${d.prs && d.prs.length > 1 ? `/${d.prs.length}` : ''}` : d.prs && d.prs.length > 0 ? `${d.prs.length} PRs` : '',
     options.showDirectory === true ? base(d.dir) : '',
-    t !== null && t.total > 0 ? `☑ ${t.done}/${t.total}` : '',
+    progress(t) !== null ? `☑ ${progress(t)?.done}/${progress(t)?.total}` : '',
   ]
   return parts.filter(Boolean).join('  │  ')
 }
@@ -102,6 +113,13 @@ async function fetchPrs($: EngineInterface): Promise<{ prs: Pr[] | null; note?: 
     }
   } catch {
     return { prs: null, note: 'gh (GitHub CLI) is not installed' }
+  }
+}
+
+async function publish($: EngineInterface, options: Readonly<Record<string, unknown>>) {
+  const d = await read($, deck)
+  if (d !== null && isStatusOn(options)) {
+    $.ui.status(statusLine(d, await read($, todo), options))
   }
 }
 
@@ -198,16 +216,45 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // Claude's todo list arrives through TodoWrite (the whole list at once) or,
+  // in newer builds, TaskCreate / TaskUpdate (one change at a time).
   on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
-    const items = e.input.todos
-    const current = items.find(t => t.status === 'in_progress')
-    await update($, todo, () => ({
-      done: items.filter(t => t.status === 'completed').length,
-      total: items.length,
-      current: current?.activeForm,
+    const items: TodoItem[] = e.todos.map((t, i) => ({
+      id: String(i + 1),
+      text: t.status === 'in_progress' ? t.activeForm : t.content,
+      status: t.status,
     }))
-    const d = await read($, deck)
-    if (d !== null && isStatusOn(options)) $.ui.status(statusLine(d, await read($, todo), options))
+    await update($, todo, () => ({ items }))
+    await publish($, options)
+
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'TaskCreate' }, async ($, e, next) => {
+    const ran = await next(e)
+    const id = ran.result?.task.id
+    if (id !== undefined) {
+      const item: TodoItem = { id, text: e.subject, status: 'pending' }
+      await update($, todo, t => ({ items: [...(t?.items ?? []), item] }))
+      await publish($, options)
+    }
+
+    return ran
+  })
+
+  on('tool.call', { tool: 'TaskUpdate' }, async ($, e, next) => {
+    await update($, todo, t =>
+      t === null
+        ? t
+        : {
+            items: t.items.map(i =>
+              i.id === e.taskId
+                ? { ...i, text: e.subject ?? i.text, status: e.status ?? i.status }
+                : i,
+            ),
+          },
+    )
+    await publish($, options)
 
     return next(e)
   })
@@ -216,7 +263,7 @@ export const register: Register = (on, options) => {
     const d = await read($, deck)
     if (!isBandOn(options) || e.props.hasSurvey || d === null) return next(e)
 
-    const t = await read($, todo)
+    const t = progress(await read($, todo))
     const { Box, Text } = $.ui.resolve(e)
     const mine = d.prs?.find(p => p.branch === d.branch)
     const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
@@ -266,6 +313,7 @@ export const register: Register = (on, options) => {
     }
     const hist = await read($, history)
     const t = await read($, todo)
+    const sum = progress(t)
     const width = Math.max(10, Math.min(MAX_HISTORY, (e.viewport?.columns ?? 40) - 4))
 
     return (
@@ -313,12 +361,20 @@ export const register: Register = (on, options) => {
           </Text>
         ))}
         <Text> </Text>
-        <Text bold>Todos</Text>
-        {t === null ? (
-          <Text dimColor>No todo list in this session yet.</Text>
-        ) : (
-          <Text>{t.done}/{t.total} done{t.current ? ` · now: ${t.current}` : ''}</Text>
-        )}
+        <Text bold>Todos{sum !== null ? ` (${sum.done}/${sum.total})` : ''}</Text>
+        {sum === null && <Text dimColor>No todo list yet. Claude makes one for multi-step work.</Text>}
+        {t?.items
+          .filter(i => i.status !== 'deleted')
+          .slice(-14)
+          .map(i => (
+            <Text
+              bold={i.status === 'in_progress'}
+              dimColor={i.status === 'completed'}
+              color={i.status === 'in_progress' ? 'yellow' : undefined}
+            >
+              {i.status === 'completed' ? '✔' : i.status === 'in_progress' ? '▶' : '○'} {i.text.slice(0, 60)}
+            </Text>
+          ))}
         <Text> </Text>
         <Button key="refresh" label="Refresh" onPress={() => refresh($, options, true)} />
       </Box>
