@@ -24,7 +24,7 @@ In a Claude Code terminal session:
 /plugin install rule-guard --marketplace Goodtail/tailored
 ```
 
-Then set the options in `/plugin configure rule-guard@goodtail-mods`.
+Then set the options in `/plugin configure rule-guard@tailored`.
 
 ## Options
 

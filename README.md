@@ -5,8 +5,8 @@ Add this repository once as a marketplace, then install only the mods you want.
 
 ```
 /plugin marketplace add Goodtail/tailored
-/plugin install session-deck@goodtail-mods
-/plugin install rule-guard@goodtail-mods
+/plugin install session-deck@tailored
+/plugin install rule-guard@tailored
 ```
 
 Or in one line each, from a Claude Code session:
