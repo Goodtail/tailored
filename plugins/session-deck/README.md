@@ -51,6 +51,7 @@ Requires Claude Code v2.1.287 or later.
   **Deck** opens the pane, **Hide** removes the band.
 - `/deck` opens the pane (and brings back a hidden band).
 - **Refresh** in the pane re-reads git and pull requests.
+- `/handoff` writes `.claude/handoff.md` (branch, uncommitted files, recent commits, open PRs, todos and a note you add as `/handoff <note>`) and prints a line to paste into the next session. When a session starts in a folder that has one, the one-line briefing says so.
 - `/deck-stats` answers with a text summary: messages, requests, tokens, session cost and the costliest message.
 
 ## Options
@@ -65,6 +66,9 @@ Set them in the `/plugin` config menu for `session-deck`.
 | `warnPercent` | `80` | Context percent that raises the toast. |
 | `cacheTtl` | `5m` | Prompt cache lifetime (`5m` or `1h`) for the cache countdown in the band. |
 | `notifyAfterSeconds` | `60` | Send a notification and toast when a message takes at least this long. `0` turns it off. |
+| `briefing` | `true` | One-line summary (branch, changes, PRs, handoff note) when a session starts. |
+| `notifyOnPermission` | `true` | Notify when Claude waits for a permission or an answer. |
+| `confirmModelSwitchAtTokens` | `100000` | Ask before `/model` drops a warm cache once the context is this large. `0` turns it off. |
 | `compactHintPercent` | `50` | Context percent from which the band suggests `/compact` or a new session, with the cost of re-reading it per request. |
 
 ## Requirements and privacy

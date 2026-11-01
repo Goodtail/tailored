@@ -103,3 +103,34 @@ test('the pane lists the todos Claude wrote', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /Write tests/ }))?.text).toContain('✔')
   await ui.unmount()
 })
+
+test('a model switch that would drop a big warm cache asks first', async ($, on) => {
+  stubEngine(on)
+  const ask = await $.classic.PreModelSwitch({
+    from_model: 'claude-opus-5-5',
+    to_model: 'claude-sonnet-5-5',
+    requested_model: 'sonnet',
+    source: 'command',
+    context_tokens: 300000,
+    prompt_cache_warm: true,
+    cache_ttl: '1h',
+    estimated_cache_write_usd: 1.5,
+    pricing: 'catalog',
+  })
+  expect(ask.permissionDecision).toBe('ask')
+  expect(ask.permissionDecisionReason).toContain('$1.50')
+})
+
+test('/handoff writes the note and says what to paste', async ($, on) => {
+  stubEngine(on)
+  let written = ''
+  on('fs.write', (_, e) => {
+    written = e.text
+    return { value: undefined }
+  })
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true })
+  const out = await $.command.run({ command: 'handoff', args: 'next: wire the button' })
+  expect(out.text).toContain('handoff.md')
+  expect(written).toContain('next: wire the button')
+  expect(written).toContain('feature/x')
+})

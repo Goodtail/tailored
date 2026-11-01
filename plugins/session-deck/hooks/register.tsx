@@ -147,6 +147,52 @@ function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, un
   return parts.filter(Boolean).join('  │  ')
 }
 
+function buildHandoff(a: {
+  now: string
+  dir: string
+  deck: Deck | null
+  todo: Todo | null
+  status: string | null
+  log: string | null
+  note: string
+}): string {
+  const d = a.deck
+  const items = (a.todo?.items ?? []).filter(i => i.status !== 'deleted')
+  const mark = (s: TodoItem['status']) => (s === 'completed' ? '[x]' : s === 'in_progress' ? '[~]' : '[ ]')
+  const lines = [
+    '# Handoff',
+    '',
+    `Written ${a.now} from \`${a.dir}\`.`,
+    '',
+    '## Where things stand',
+    d?.branch ? `- Branch: ${d.branch}${d.worktree ? ` (worktree ${d.worktree})` : ''}` : '- Not a git repository',
+    d ? `- Model: ${prettyModel(d.model)} · context ${d.percent}% (${k(d.tokens)}/${k(d.window)})` : '',
+    a.status ? `- Uncommitted changes:\n${a.status.split('\n').map(l => `  - ${l}`).join('\n')}` : '- Working tree clean',
+    a.log ? `- Recent commits:\n${a.log.split('\n').map(l => `  - ${l}`).join('\n')}` : '',
+    d?.prs && d.prs.length > 0
+      ? `- Open PRs:\n${d.prs.map(p => `  - #${p.number} ${p.title} (${p.branch})`).join('\n')}`
+      : '',
+    '',
+    '## Todos',
+    items.length === 0 ? 'None were open in the session.' : items.map(i => `- ${mark(i.status)} ${i.text}`).join('\n'),
+    '',
+    '## Notes from the person',
+    a.note !== '' ? a.note : '(none given; add the last decision and the next step here)',
+    '',
+  ]
+  return lines.filter((l, i) => l !== '' || lines[i - 1] !== '').join('\n')
+}
+
+function briefing(d: Deck, hasHandoff: boolean): string {
+  const bits = [
+    d.branch !== null ? `🌿 ${d.branch}${d.worktree !== null ? ` (wt ${d.worktree})` : ''}` : '',
+    d.branch !== null ? (d.changes > 0 ? `${d.changes} uncommitted` : 'clean') : '',
+    d.prs !== null && d.prs.length > 0 ? `🔀 ${d.prs.length} open PR${d.prs.length === 1 ? '' : 's'}` : '',
+    hasHandoff ? '📝 a handoff note is here: .claude/handoff.md' : '',
+  ].filter(Boolean)
+  return bits.join(' · ')
+}
+
 async function git($: EngineInterface, argv: string[]): Promise<string | null> {
   try {
     const r = await $.process.run(['git', ...argv], { timeoutMs: 5000 })
@@ -329,6 +375,28 @@ export const register: Register = (on, options) => {
     return res
   })
 
+  // Ask before a switch that would throw away a large warm cache.
+  on('classic.PreModelSwitch', async ($, e, next) => {
+    const at = typeof options.confirmModelSwitchAtTokens === 'number' ? options.confirmModelSwitchAtTokens : 100_000
+    if (at > 0 && e.prompt_cache_warm && e.context_tokens >= at) {
+      return {
+        permissionDecision: 'ask' as const,
+        permissionDecisionReason: `Switching to ${e.to_model} drops the warm cache: re-caching ${k(e.context_tokens)} costs about $${e.estimated_cache_write_usd.toFixed(2)}. Switch anyway?`,
+      }
+    }
+
+    return next(e)
+  })
+
+  // Tell me when Claude is waiting on me.
+  on('classic.Notification', async ($, e, next) => {
+    if (options.notifyOnPermission !== false && /permission|elicitation/.test(e.notification_type)) {
+      void $.ui.notify(e.message, { title: e.title ?? 'Claude Code' })
+    }
+
+    return next(e)
+  })
+
   // A switch with /model is not a turn: re-read the model at once.
   on('classic.PostModelSwitch', async ($, e, next) => {
     if (e.cache_ttl === '1h' || e.cache_ttl === '5m') await update($, seenTtl, () => e.cache_ttl)
@@ -349,6 +417,10 @@ export const register: Register = (on, options) => {
       description: 'Open the session deck pane (model, context, limits, branch, PRs, todos)',
     })
     await $.command.register({
+      name: 'handoff',
+      description: 'Write .claude/handoff.md (branch, changes, todos, PRs) for the next session',
+    })
+    await $.command.register({
       name: 'deck-stats',
       description: 'Summarize this session: messages, requests, tokens, cost, costliest message',
     })
@@ -356,7 +428,51 @@ export const register: Register = (on, options) => {
     $.clock.every(10_000, () => $.ui.invalidate('ui.render'))
     await refresh($, options, true)
 
+    if (options.briefing !== false && e.isInteractive) {
+      const d = await read($, deck)
+      if (d !== null && d.branch !== null) {
+        let hasHandoff = false
+        try {
+          await $.fs.read(`${d.dir}/.claude/handoff.md`)
+          hasHandoff = true
+        } catch {
+          hasHandoff = false
+        }
+        $.ui.log(briefing(d, hasHandoff))
+      }
+    }
+
     return next(e)
+  })
+
+  on('command.run', { command: 'handoff' }, async ($, e) => {
+    const cwd = await $.session.cwd()
+    const md = buildHandoff({
+      now: new Date().toISOString().slice(0, 16).replace('T', ' '),
+      dir: cwd,
+      deck: await read($, deck),
+      todo: await read($, todo),
+      status: await git($, ['status', '--short']),
+      log: await git($, ['log', '--oneline', '-5']),
+      note: e.args.trim(),
+    })
+    const dir = `${cwd}/.claude`
+    const file = `${dir}/handoff.md`
+    try {
+      await $.process.run(['mkdir', '-p', dir])
+      await $.fs.write(file, md)
+    } catch {
+      return { text: `Could not write ${file}. Here is the note instead:\n\n${md}` }
+    }
+
+    return {
+      text: [
+        `Handoff note written to ${file}`,
+        '',
+        'Start the next session and paste:',
+        'Read .claude/handoff.md and continue from there. First confirm the branch and the first unfinished todo.',
+      ].join('\n'),
+    }
   })
 
   on('command.run', { command: 'deck-stats' }, async $ => {
