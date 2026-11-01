@@ -90,6 +90,8 @@ const totals = atom({ plugin: 'session-deck', key: 'totals' } as const, null, {
 
 // When the last model request finished: the prompt cache's clock starts there.
 const lastAt = atom({ plugin: 'session-deck', key: 'lastAt' } as const, null)
+// The cache lifetime the engine itself reported on the last model switch.
+const seenTtl = atom({ plugin: 'session-deck', key: 'seenTtl' } as const, null)
 // The costliest message so far.
 const peak = atom({ plugin: 'session-deck', key: 'peak' } as const, null, {
   shape: 'peak-1',
@@ -272,7 +274,6 @@ export const register: Register = (on, options) => {
   let calls = 0
   // When the current message began, in $.clock.now()'s milliseconds.
   let turnStartedAt = 0
-  const ttlMs = (options.cacheTtl === '1h' ? 60 : 5) * 60_000
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
@@ -317,6 +318,7 @@ export const register: Register = (on, options) => {
 
   // A switch with /model is not a turn: re-read the model at once.
   on('classic.PostModelSwitch', async ($, e, next) => {
+    if (e.cache_ttl === '1h' || e.cache_ttl === '5m') await update($, seenTtl, () => e.cache_ttl)
     await refresh($, options, true)
 
     return next(e)
@@ -461,6 +463,9 @@ export const register: Register = (on, options) => {
     const week = d.limits.find(l => l.kind === 'seven_day' && l !== five)
     const sp = await read($, spend)
     const last = await read($, lastAt)
+    // The engine's own word (seen at a model switch) beats the option.
+    const seen = await read($, seenTtl)
+    const ttlMs = ((seen ?? options.cacheTtl) === '1h' ? 60 : 5) * 60_000
     const left = last === null ? null : ttlMs - (Date.now() - last)
     const compactAt = typeof options.compactHintPercent === 'number' ? options.compactHintPercent : 50
     const cachePrice = priceOf(model)?.cache

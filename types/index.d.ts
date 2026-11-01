@@ -64,6 +64,7 @@ declare module 'claude-code' {
       spend: Shaped<Spend | null>
       totals: Shaped<Totals | null>
       lastAt: number | null
+      seenTtl: '5m' | '1h' | null
       peak: Shaped<Peak | null>
       warned: boolean
     }

@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -56,7 +56,7 @@
     "cacheTtl": {
       "type": "string",
       "title": "Prompt cache lifetime",
-      "description": "How long the prompt cache lives after a request: 5m (the API default) or 1h. Drives the cache countdown.",
+      "description": "How long the prompt cache lives after a request: 5m or 1h. A model switch (/model) lets the engine report the real value, which then wins over this.",
       "default": "5m",
       "options": [
         "5m",
