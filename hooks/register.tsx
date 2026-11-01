@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Limit, Peak, Pr, Spend, Todo, TodoItem, Totals } from '../types'
+import type { Deck, Fill, Limit, Peak, Pr, Spend, Todo, TodoItem, Totals } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -92,6 +92,10 @@ const totals = atom({ plugin: 'session-deck', key: 'totals' } as const, null, {
 const lastAt = atom({ plugin: 'session-deck', key: 'lastAt' } as const, null)
 // The cache lifetime the engine itself reported on the last model switch.
 const seenTtl = atom({ plugin: 'session-deck', key: 'seenTtl' } as const, null)
+// What fills the context window, biggest first, from the engine's own estimate.
+const fill = atom({ plugin: 'session-deck', key: 'fill' } as const, null, {
+  shape: 'fill-1',
+})
 // The costliest message so far.
 const peak = atom({ plugin: 'session-deck', key: 'peak' } as const, null, {
   shape: 'peak-1',
@@ -205,7 +209,8 @@ async function refresh(
   // A turn with many steps refreshes after each; keep git and gh calm.
   if (!force && !isTurnEnd && Date.now() - lastRefresh < 1500) return
   lastRefresh = Date.now()
-  const usage = await $.session.usage()
+  const wantsFill = isTurnEnd || force
+  const usage = await $.session.usage(wantsFill ? { breakdown: 'summary' } : undefined)
   const { tokens, window, percent } = usage.context
   if (tokens === undefined || percent === undefined) return
 
@@ -256,6 +261,14 @@ async function refresh(
     prsNote,
   }
   await update($, deck, () => next)
+  const rows = usage.context.breakdown?.categories
+  if (wantsFill && rows !== undefined) {
+    const used: Fill[] = rows
+      .filter(r => r.kind === 'used' && r.tokens > 0)
+      .map(r => ({ name: r.name, tokens: r.tokens }))
+      .sort((a, b) => b.tokens - a.tokens)
+    await update($, fill, () => used)
+  }
   if (isTurnEnd || force) await update($, history, list => [...list, percent].slice(-MAX_HISTORY))
   $.ui.status(isStatusOn(options) ? statusLine(next, await read($, todo), options) : undefined)
 
@@ -319,6 +332,12 @@ export const register: Register = (on, options) => {
   // A switch with /model is not a turn: re-read the model at once.
   on('classic.PostModelSwitch', async ($, e, next) => {
     if (e.cache_ttl === '1h' || e.cache_ttl === '5m') await update($, seenTtl, () => e.cache_ttl)
+    // A switch drops the warm cache: the next request writes the context again.
+    if (e.prompt_cache_warm && e.context_tokens >= 50_000) {
+      $.ui.toast(
+        `Model switch: the warm cache is lost. Re-caching ${k(e.context_tokens)} costs about $${e.estimated_cache_write_usd.toFixed(2)}.`,
+      )
+    }
     await refresh($, options, true)
 
     return next(e)
@@ -560,6 +579,8 @@ export const register: Register = (on, options) => {
     const sum = progress(t)
     const tot = await read($, totals)
     const sp = await read($, spend)
+    const fillRows = await read($, fill)
+    const fillTotal = Math.max(1, (fillRows ?? []).reduce((n, r) => n + r.tokens, 0))
     const cols = Math.max(20, e.props.bodyColumns ?? 40)
     const width = Math.max(10, Math.min(MAX_HISTORY, cols - 2))
     const line = '─'.repeat(cols - 1)
@@ -587,6 +608,18 @@ export const register: Register = (on, options) => {
         <Text color={tone(d.percent)}>{spark(hist.slice(-width))}</Text>
         {d.percent >= 50 && (
           <Text color={tone(d.percent)}>💡 /compact or a new session makes each request cheaper.</Text>
+        )}
+
+        {section('🧩', 'What fills the context', 'magenta')}
+        {fillRows === null || fillRows.length === 0 ? (
+          <Text dimColor>Measured after each message.</Text>
+        ) : (
+          fillRows.slice(0, 6).map(r => (
+            <Text>
+              <Text color="magenta">{bar(Math.round((r.tokens / fillTotal) * 100), 8)}</Text>
+              {' '}{k(r.tokens)} <Text dimColor>{r.name}</Text>
+            </Text>
+          ))
         )}
 
         {section('⏳', 'Usage limits', 'yellow')}

@@ -18,11 +18,13 @@ is available too.
 | Usage limits (5-hour, 7-day) used and left, reset time | 5h | all reported |
 | Git branch, worktree name, changed-file count | yes | yes |
 | Open pull requests (current branch highlighted) | current PR | list of 10 |
+| What fills the context (system prompt, tools, memory files, messages…) | | yes |
 | Todo progress (from Claude's todo list) | yes | yes, with the current task |
 | Working directory, trimmed from the left to fit (nearest folders stay) | yes (option) | yes |
 | This message's spend: model requests, re-sent context, new input, output | yes | |
 | API-equivalent cost of the session (what the tokens would cost at API prices) and the last turn's share | yes, in the status line | yes |
 
+After a `/model` switch with a large warm context, a toast says how much re-caching will cost.
 A toast appears once when the context passes your warning threshold, and the
 status line carries `model · ctx N%`.
 
