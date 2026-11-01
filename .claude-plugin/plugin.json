@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.0",
+  "version": "0.1.10",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
