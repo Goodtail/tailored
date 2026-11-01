@@ -60,6 +60,7 @@ Set them in the `/plugin` config menu for `session-deck`.
 | `showDirectory` | `true` | Show the working directory next to the branch. |
 | `showPrs` | `true` | List open pull requests. |
 | `warnPercent` | `80` | Context percent that raises the toast. |
+| `compactHintPercent` | `50` | Context percent from which the band suggests `/compact` or a new session, with the cost of re-reading it per request. |
 
 ## Requirements and privacy
 

@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -46,6 +46,12 @@
       "title": "Context warning at (%)",
       "description": "Show a toast once when the context window passes this percent.",
       "default": 80
+    },
+    "compactHintPercent": {
+      "type": "number",
+      "title": "Compact hint at (%)",
+      "description": "Show a hint to /compact or start a new session once the context passes this percent.",
+      "default": 50
     }
   }
 }

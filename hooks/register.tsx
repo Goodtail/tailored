@@ -393,6 +393,9 @@ export const register: Register = (on, options) => {
     const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
     const week = d.limits.find(l => l.kind === 'seven_day' && l !== five)
     const sp = await read($, spend)
+    const compactAt = typeof options.compactHintPercent === 'number' ? options.compactHintPercent : 50
+    const cachePrice = priceOf(model)?.cache
+    const perCall = cachePrice !== undefined ? (d.tokens / 1_000_000) * cachePrice : null
     // Columns the first row already holds, so the path gets what is left.
     const leftLen =
       3 + prettyModel(model).length +
@@ -448,6 +451,14 @@ export const register: Register = (on, options) => {
             <Text>{sp !== null ? '  ' : ''}☑ <Text bold>{t.done}/{t.total}</Text>{t.current ? <Text dimColor> {t.current}</Text> : ''}</Text>
           )}
         </Box>
+        {d.percent >= compactAt && (
+          <Box>
+            <Text color={tone(d.percent)}>
+              💡 Context is large: each request re-reads {k(d.tokens)}
+              {perCall !== null ? ` (~$${perCall.toFixed(2)})` : ''}. /compact or a new session makes the next ones cheaper.
+            </Text>
+          </Box>
+        )}
       </Box>
     )
   })
