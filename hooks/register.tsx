@@ -81,37 +81,7 @@ const isBandOn = (o: Readonly<Record<string, unknown>>) => o.position !== 'statu
 const isStatusOn = (o: Readonly<Record<string, unknown>>) =>
   o.position === 'status' || o.position === 'both'
 
-const ESC = String.fromCharCode(27)
-const ansi = (code: string, text: string) => `${ESC}[${code}m${text}${ESC}[0m`
-const ansiTone = (p: number) => (p >= 85 ? '31' : p >= 70 ? '33' : '32')
-
-// The under-prompt line as colored rows: it leans on the terminal reading the
-// escapes; if yours prints them raw, set position to band.
-function statusRows(d: Deck, t: Todo | null, options: Readonly<Record<string, unknown>>): string {
-  const mine = d.prs?.find(p => p.branch === d.branch)
-  const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
-  const sum = progress(t)
-  const row1 = [
-    `🤖 ${ansi('1;35', prettyModel(d.model))}`,
-    d.branch !== null
-      ? ansi('36', `🌿 ${d.branch}${d.worktree !== null ? ` (wt ${d.worktree})` : ''}${d.changes > 0 ? ` ±${d.changes}` : ''}`)
-      : '',
-    mine !== undefined ? ansi('34', `🔀 PR#${mine.number}`) + (d.prs ? ansi('2', ` (${d.prs.length} open)`) : '') : '',
-    options.showDirectory !== false ? ansi('2', `📁 ${tailPath(d.dir, 36)}`) : '',
-  ].filter(Boolean).join('  ')
-  const row2 = [
-    `🧠 Context ${ansi(`1;${ansiTone(d.percent)}`, `${d.percent}%`)} ${ansi(ansiTone(d.percent), `[${bar(d.percent, 10)}]`)} ${ansi('2', `${k(d.tokens)}/${k(d.window)}`)}`,
-    five !== undefined ? `⏳ ${ansi(ansiTone(five.percent), `${limitName(five.kind)} ${five.percent}%`)}${ansi('2', resets(five.resetsAt))}` : '',
-  ].filter(Boolean).join('  ')
-  const row3 = [
-    d.usd !== undefined ? `💰 ${ansi('1;32', `$${d.usd.toFixed(2)}`)}${d.turnUsd !== undefined ? ansi('2', ` (+${d.turnUsd.toFixed(2)})`) : ''} ${ansi('2', 'API-equivalent')}` : '',
-    sum !== null ? `☑ ${ansi('1', `${sum.done}/${sum.total}`)}${sum.current ? ansi('2', ` ${sum.current}`) : ''}` : '',
-  ].filter(Boolean).join('  ')
-  return [row1, row2, row3].filter(Boolean).join('\n')
-}
-
 function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, unknown>>): string {
-  if (options.position === 'status') return statusRows(d, t, options)
   const mine = d.prs?.find(p => p.branch === d.branch)
   const limit = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
   const parts = [
@@ -122,7 +92,7 @@ function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, un
       ? `⎇ ${d.branch}${d.worktree !== null ? ` (wt ${d.worktree})` : ''}${d.changes > 0 ? ` ±${d.changes}` : ''}`
       : '',
     mine !== undefined ? `PR#${mine.number}${d.prs && d.prs.length > 1 ? `/${d.prs.length}` : ''}` : d.prs && d.prs.length > 0 ? `${d.prs.length} PRs` : '',
-    options.showDirectory === true ? base(d.dir) : '',
+    options.showDirectory !== false ? tailPath(d.dir, 36) : '',
     progress(t) !== null ? `☑ ${progress(t)?.done}/${progress(t)?.total}` : '',
   ]
   return parts.filter(Boolean).join('  │  ')
