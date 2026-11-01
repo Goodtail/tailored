@@ -2,11 +2,33 @@
   "name": "session-deck",
   "version": "0.1.0",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
-  "author": { "name": "Goodtail" },
+  "author": {
+    "name": "Goodtail"
+  },
   "license": "MIT",
-  "keywords": ["mod", "hud", "context", "usage", "git", "worktree", "pr", "todo"],
+  "keywords": [
+    "mod",
+    "hud",
+    "context",
+    "usage",
+    "git",
+    "worktree",
+    "pr",
+    "todo"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
+    "position": {
+      "type": "string",
+      "title": "Where to show the deck",
+      "description": "below: status line under the prompt. above: band above the prompt. both: show it in both places.",
+      "default": "below",
+      "options": [
+        "below",
+        "above",
+        "both"
+      ]
+    },
     "showDirectory": {
       "type": "boolean",
       "title": "Show directory",

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Limit, Pr } from '../types'
+import type { Deck, Limit, Pr, Todo } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -39,6 +39,22 @@ const resets = (iso?: string) => {
   if (Number.isNaN(ms) || ms <= 0) return ''
   const m = Math.round(ms / 60000)
   return m >= 60 ? ` ↻${Math.floor(m / 60)}h${m % 60 ? `${m % 60}m` : ''}` : ` ↻${m}m`
+}
+
+function statusLine(d: Deck, t: Todo | null, options: Readonly<Record<string, unknown>>): string {
+  const mine = d.prs?.find(p => p.branch === d.branch)
+  const limit = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
+  const parts = [
+    `${d.model}  ${bar(d.percent, 8)} ${d.percent}% ${k(d.tokens)}/${k(d.window)}`,
+    limit !== undefined ? `${limitName(limit.kind)} ${limit.percent}%${resets(limit.resetsAt)}` : '',
+    d.branch !== null
+      ? `⎇ ${d.branch}${d.worktree !== null ? ` (wt ${d.worktree})` : ''}${d.changes > 0 ? ` ±${d.changes}` : ''}`
+      : '',
+    mine !== undefined ? `PR#${mine.number}${d.prs && d.prs.length > 1 ? `/${d.prs.length}` : ''}` : d.prs && d.prs.length > 0 ? `${d.prs.length} PRs` : '',
+    options.showDirectory === true ? base(d.dir) : '',
+    t !== null && t.total > 0 ? `☑ ${t.done}/${t.total}` : '',
+  ]
+  return parts.filter(Boolean).join('  │  ')
 }
 
 async function git($: EngineInterface, argv: string[]): Promise<string | null> {
@@ -128,7 +144,7 @@ async function refresh($: EngineInterface, options: Readonly<Record<string, unkn
   }
   await update($, deck, () => next)
   await update($, history, list => [...list, percent].slice(-MAX_HISTORY))
-  $.ui.status(`${model} · ctx ${percent}%`)
+  $.ui.status(statusLine(next, await read($, todo), options))
 
   const warnAt = typeof options.warnPercent === 'number' ? options.warnPercent : 80
   const isWarned = await read($, warned)
@@ -177,13 +193,16 @@ export const register: Register = (on, options) => {
       total: items.length,
       current: current?.activeForm,
     }))
+    const d = await read($, deck)
+    if (d !== null) $.ui.status(statusLine(d, await read($, todo), options))
 
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const d = await read($, deck)
-    if (e.props.hasSurvey || d === null || (await read($, isHidden))) return next(e)
+    const isBelowOnly = options.position === undefined || options.position === 'below'
+    if (isBelowOnly || e.props.hasSurvey || d === null || (await read($, isHidden))) return next(e)
 
     const t = await read($, todo)
     const { Box, Button, Text } = $.ui.resolve(e)
