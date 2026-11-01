@@ -134,3 +134,25 @@ test('/handoff writes the note and says what to paste', async ($, on) => {
   expect(written).toContain('next: wire the button')
   expect(written).toContain('feature/x')
 })
+
+test('in a subagent view the band is about that agent, not the main conversation', async ($, on) => {
+  stubEngine(on)
+  on('agent.list', () => ({ value: [{ id: 'a1', description: 'Scan the repo' }] }))
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({
+    plugin: 'session-deck',
+    component: 'AbovePrompt',
+    surface: 'terminal',
+    props: {
+      hasSurvey: false,
+      isWorking: false,
+      maxRows: 10,
+      bodyColumns: 100,
+      scroll: { offset: 0, bodyRows: 10 },
+      view: { agentId: 'a1' },
+    },
+  })
+  expect((await ui.find({ type: 'Text', text: /Scan the repo/ }))?.text).toContain('Scan the repo')
+  await ui.unmount()
+})

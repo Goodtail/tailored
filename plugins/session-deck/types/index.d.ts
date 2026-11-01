@@ -56,6 +56,17 @@ export type Peak = { usd: number; calls: number; resent: number }
 /** One row of what occupies the context window. */
 export type Fill = { name: string; tokens: number }
 
+/** What one subagent has used, from its own model requests. */
+export type AgentStat = {
+  model: string
+  /** What its next request re-sends. */
+  tokens: number
+  calls: number
+  resent: number
+  fresh: number
+  output: number
+}
+
 export type Todo = { items: TodoItem[] }
 
 declare module 'claude-code' {
@@ -67,6 +78,7 @@ declare module 'claude-code' {
       spend: Shaped<Spend | null>
       totals: Shaped<Totals | null>
       lastAt: number | null
+      agents: Shaped<Record<string, AgentStat>>
       fill: Shaped<Fill[] | null>
       seenTtl: '5m' | '1h' | null
       peak: Shaped<Peak | null>

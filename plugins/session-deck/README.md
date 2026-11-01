@@ -25,6 +25,7 @@ is available too.
 | API-equivalent cost of the session (what the tokens would cost at API prices) and the last turn's share | yes, in the status line | yes |
 
 After a `/model` switch with a large warm context, a toast says how much re-caching will cost.
+When you open a subagent's transcript from the tasks list, the band switches to that agent's own context, model and token spend instead of the main conversation's.
 A toast appears once when the context passes your warning threshold, and the
 status line carries `model · ctx N%`.
 

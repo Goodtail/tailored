@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Fill, Limit, Peak, Pr, Spend, Todo, TodoItem, Totals } from '../types'
+import type { AgentStat, Deck, Fill, Limit, Peak, Pr, Spend, Todo, TodoItem, Totals } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -95,6 +95,11 @@ const seenTtl = atom({ plugin: 'session-deck', key: 'seenTtl' } as const, null)
 // What fills the context window, biggest first, from the engine's own estimate.
 const fill = atom({ plugin: 'session-deck', key: 'fill' } as const, null, {
   shape: 'fill-1',
+})
+// What each subagent has used, by agent id, so its band can show its own
+// context and not the main conversation's.
+const agents = atom({ plugin: 'session-deck', key: 'agents' } as const, {}, {
+  shape: 'agents-1',
 })
 // The costliest message so far.
 const peak = atom({ plugin: 'session-deck', key: 'peak' } as const, null, {
@@ -350,6 +355,28 @@ export const register: Register = (on, options) => {
   // refresh the figures so the band moves while Claude is still working.
   on('turn.step', async function* ($, e, next) {
     const res = yield* next(e)
+    if (e.agentId !== undefined && res.usage !== null) {
+      const id = e.agentId
+      const u = res.usage
+      await update($, agents, all => {
+        const before = all[id]
+        const stat: AgentStat = {
+          model: u.model,
+          // What the agent's next request re-sends.
+          tokens: u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
+          calls: (before?.calls ?? 0) + 1,
+          resent: (before?.resent ?? 0) + u.cache_read_input_tokens,
+          fresh: (before?.fresh ?? 0) + u.input_tokens + u.cache_creation_input_tokens,
+          output: (before?.output ?? 0) + u.output_tokens,
+        }
+        const keys = Object.keys(all).filter(k => k !== id).slice(-29)
+        const kept: Record<string, AgentStat> = {}
+        for (const key of keys) kept[key] = all[key]
+        kept[id] = stat
+
+        return kept
+      })
+    }
     if (e.agentId === undefined) {
       calls += 1
       await update($, lastAt, () => Date.now())
@@ -601,6 +628,55 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const d = await read($, deck)
     if (!isBandOn(options) || e.props.hasSurvey || d === null) return next(e)
+
+    const viewed = e.props.view?.agentId
+    if (viewed !== undefined) {
+      const all = await read($, agents)
+      const mine = all[viewed]
+      const { Box, Text } = $.ui.resolve(e)
+      let label = 'subagent'
+      try {
+        const found = (await $.agent.list()).find(a => a.id === viewed)
+        if (found?.description) label = found.description
+      } catch {
+        label = 'subagent'
+      }
+      if (mine === undefined) {
+        return (
+          <Box flexDirection="column">
+            <Text dimColor>{'─'.repeat(Math.max(10, (e.props.bodyColumns ?? 80) - 1))}</Text>
+            <Text>🧬 <Text bold color="magenta">{label}</Text><Text dimColor> · no request seen yet; the main figures are not this agent's</Text></Text>
+          </Box>
+        )
+      }
+      const pct = Math.min(100, Math.round((mine.tokens / d.window) * 100))
+
+      return (
+        <Box flexDirection="column">
+          <Text dimColor>{'─'.repeat(Math.max(10, (e.props.bodyColumns ?? 80) - 1))}</Text>
+          <Box>
+            <Text>🧬 </Text>
+            <Text bold color="magenta">{label}</Text>
+            <Text dimColor>  {prettyModel(mine.model)} · this agent's own figures</Text>
+          </Box>
+          <Box>
+            <Text>🧠 Context </Text>
+            <Text bold color={tone(pct)}>{pct}%</Text>
+            <Text color={tone(pct)}> [{bar(pct, 10)}]</Text>
+            <Text dimColor> {k(mine.tokens)}/{k(d.window)}</Text>
+          </Box>
+          <Box>
+            <Text>📨 {mine.calls} call{mine.calls === 1 ? '' : 's'}</Text>
+            <Text dimColor> · </Text>
+            <Text>{k(mine.resent)} re-read</Text>
+            <Text dimColor> · </Text>
+            <Text>{k(mine.fresh)} new</Text>
+            <Text dimColor> · </Text>
+            <Text>{k(mine.output)} out</Text>
+          </Box>
+        </Box>
+      )
+    }
 
     const t = progress(await read($, todo))
     const model = await $.session.model()
