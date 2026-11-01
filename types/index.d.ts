@@ -35,6 +35,18 @@ export type TodoItem = {
   status: 'pending' | 'in_progress' | 'completed' | 'deleted'
 }
 
+/** Tokens one message cost, summed over every model request it made. */
+export type Spend = {
+  calls: number
+  /** Context sent again and served by the prompt cache (cheap). */
+  resent: number
+  /** Tokens written to the cache. */
+  written: number
+  /** Input the cache did not cover. */
+  fresh: number
+  output: number
+}
+
 export type Todo = { items: TodoItem[] }
 
 declare module 'claude-code' {
@@ -43,6 +55,7 @@ declare module 'claude-code' {
       deck: Shaped<Deck | null>
       history: Shaped<number[]>
       todo: Shaped<Todo | null>
+      spend: Shaped<Spend | null>
       warned: boolean
     }
   }

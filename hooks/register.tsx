@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Deck, Limit, Pr, Todo, TodoItem } from '../types'
+import type { Deck, Limit, Pr, Spend, Todo, TodoItem } from '../types'
 
 const PANE = 'session-deck'
 const MAX_HISTORY = 60
@@ -57,6 +57,26 @@ const prettyModel = (id: string) => {
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
 }
 
+const spend = atom({ plugin: 'session-deck', key: 'spend' } as const, null, {
+  shape: 'spend-1',
+})
+
+const homeShort = (path: string) => path.replace(/^\/(Users|home)\/[^/]+/, '~')
+
+// The path's tail, the folders nearest the working directory first to stay.
+function tailPath(path: string, max: number): string {
+  const full = homeShort(path)
+  if (full.length <= max) return full
+  const segs = full.split('/').filter(Boolean)
+  let kept = ''
+  for (let i = segs.length - 1; i >= 0; i--) {
+    const next = kept === '' ? segs[i] : `${segs[i]}/${kept}`
+    if (next.length + 2 > max) break
+    kept = next
+  }
+  return kept === '' ? `…${segs[segs.length - 1].slice(-(max - 1))}` : `…/${kept}`
+}
+
 const isBandOn = (o: Readonly<Record<string, unknown>>) => o.position !== 'status'
 const isStatusOn = (o: Readonly<Record<string, unknown>>) =>
   o.position === 'status' || o.position === 'both'
@@ -77,7 +97,7 @@ function statusRows(d: Deck, t: Todo | null, options: Readonly<Record<string, un
       ? ansi('36', `🌿 ${d.branch}${d.worktree !== null ? ` (wt ${d.worktree})` : ''}${d.changes > 0 ? ` ±${d.changes}` : ''}`)
       : '',
     mine !== undefined ? ansi('34', `🔀 PR#${mine.number}`) + (d.prs ? ansi('2', ` (${d.prs.length} open)`) : '') : '',
-    options.showDirectory === true ? ansi('2', `📁 ${base(d.dir)}`) : '',
+    options.showDirectory !== false ? ansi('2', `📁 ${tailPath(d.dir, 36)}`) : '',
   ].filter(Boolean).join('  ')
   const row2 = [
     `🧠 Context ${ansi(`1;${ansiTone(d.percent)}`, `${d.percent}%`)} ${ansi(ansiTone(d.percent), `[${bar(d.percent, 10)}]`)} ${ansi('2', `${k(d.tokens)}/${k(d.window)}`)}`,
@@ -219,6 +239,21 @@ async function refresh($: EngineInterface, options: Readonly<Record<string, unkn
 }
 
 export const register: Register = (on, options) => {
+  // Model requests the main loop made for the current message.
+  let calls = 0
+
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) calls = 0
+
+    return next(e)
+  })
+
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId === undefined) calls += 1
+
+    return yield* next(e)
+  })
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'deck',
@@ -241,6 +276,17 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined && e.usage !== undefined) {
+      const u = e.usage
+      const row: Spend = {
+        calls: Math.max(1, calls),
+        resent: u.cache_read_input_tokens,
+        written: u.cache_creation_input_tokens,
+        fresh: u.input_tokens,
+        output: u.output_tokens,
+      }
+      await update($, spend, () => row)
+    }
     await refresh($, options, false)
 
     return next(e)
@@ -298,6 +344,14 @@ export const register: Register = (on, options) => {
     const mine = d.prs?.find(p => p.branch === d.branch)
     const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
     const week = d.limits.find(l => l.kind === 'seven_day' && l !== five)
+    const sp = await read($, spend)
+    // Columns the first row already holds, so the path gets what is left.
+    const leftLen =
+      3 + prettyModel(d.model).length +
+      (d.branch !== null ? 5 + d.branch.length + (d.worktree !== null ? 6 + d.worktree.length : 0) : 0) +
+      (d.changes > 0 ? 2 + String(d.changes).length : 0) +
+      (mine !== undefined ? 8 + String(mine.number).length : 0) +
+      (d.prs !== null && d.prs.length > 0 ? 8 + String(d.prs.length).length : 0)
 
     return (
       <Box flexDirection="column">
@@ -310,7 +364,9 @@ export const register: Register = (on, options) => {
           {d.changes > 0 && <Text color="yellow"> ±{d.changes}</Text>}
           {mine !== undefined && <Text color="blue">  🔀 PR#{mine.number}</Text>}
           {d.prs !== null && d.prs.length > 0 && <Text dimColor> ({d.prs.length} open)</Text>}
-          {options.showDirectory === true && <Text dimColor>  📁 {base(d.dir)}</Text>}
+          {options.showDirectory !== false && (
+            <Text dimColor>  📁 {tailPath(d.dir, Math.max(12, (e.props.bodyColumns ?? 80) - leftLen - 6))}</Text>
+          )}
         </Box>
         <Box>
           <Text>🧠 Context </Text>
@@ -326,6 +382,17 @@ export const register: Register = (on, options) => {
         <Box>
           {d.usd !== undefined && (
             <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text>{d.turnUsd !== undefined ? <Text dimColor> (+${d.turnUsd.toFixed(2)})</Text> : ''}<Text dimColor> API-equivalent</Text></Text>
+          )}
+          {sp !== null && (
+            <Text>
+              {'  '}📨 {sp.calls} call{sp.calls === 1 ? '' : 's'}
+              <Text dimColor> · </Text>
+              {k(sp.resent)} re-read
+              <Text dimColor> · </Text>
+              {k(sp.fresh + sp.written)} new
+              <Text dimColor> · </Text>
+              {k(sp.output)} out
+            </Text>
           )}
           {t !== null && t.total > 0 && (
             <Text>  ☑ <Text bold>{t.done}/{t.total}</Text>{t.current ? <Text dimColor> {t.current}</Text> : ''}</Text>

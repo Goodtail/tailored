@@ -19,7 +19,8 @@ is available too.
 | Git branch, worktree name, changed-file count | yes | yes |
 | Open pull requests (current branch highlighted) | current PR | list of 10 |
 | Todo progress (from Claude's todo list) | yes | yes, with the current task |
-| Working directory | optional | optional |
+| Working directory, trimmed from the left to fit (nearest folders stay) | yes (option) | yes |
+| This message's spend: model requests, re-sent context, new input, output | yes | |
 | API-equivalent cost of the session (what the tokens would cost at API prices) and the last turn's share | yes, in the status line | yes |
 
 A toast appears once when the context passes your warning threshold, and the
@@ -56,7 +57,7 @@ Set them in the `/plugin` config menu for `session-deck`.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `position` | `band` | `band` colored rows above the prompt, `status` one plain line under it, or `both`. |
-| `showDirectory` | `false` | Show the working directory. |
+| `showDirectory` | `true` | Show the working directory next to the branch. |
 | `showPrs` | `true` | List open pull requests. |
 | `warnPercent` | `80` | Context percent that raises the toast. |
 

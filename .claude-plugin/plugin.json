@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -32,8 +32,8 @@
     "showDirectory": {
       "type": "boolean",
       "title": "Show directory",
-      "description": "Show the working directory in the band.",
-      "default": false
+      "description": "Show the working directory next to the branch, trimmed from the left when long.",
+      "default": true
     },
     "showPrs": {
       "type": "boolean",
