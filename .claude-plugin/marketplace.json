@@ -1,0 +1,11 @@
+{
+  "name": "goodtail-mods",
+  "owner": { "name": "Goodtail" },
+  "plugins": [
+    {
+      "name": "session-deck",
+      "source": "./",
+      "description": "Live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos."
+    }
+  ]
+}

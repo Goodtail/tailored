@@ -1,0 +1,42 @@
+export type Limit = { kind: string; percent: number; resetsAt?: string }
+
+export type Pr = {
+  number: number
+  title: string
+  branch: string
+  isDraft: boolean
+  review?: string
+}
+
+export type Deck = {
+  model: string
+  percent: number
+  tokens: number
+  window: number
+  usd?: number
+  limits: Limit[]
+  dir: string
+  /** Current branch, or null outside a git repository. */
+  branch: string | null
+  /** Worktree folder name when the session runs in a linked worktree. */
+  worktree: string | null
+  /** Files with uncommitted changes. */
+  changes: number
+  /** Open PRs, null when not fetched or unavailable. */
+  prs: Pr[] | null
+  prsNote?: string
+}
+
+export type Todo = { done: number; total: number; current?: string }
+
+declare module 'claude-code' {
+  interface PluginState {
+    'session-deck': {
+      deck: Shaped<Deck | null>
+      history: Shaped<number[]>
+      todo: Shaped<Todo | null>
+      isHidden: boolean
+      warned: boolean
+    }
+  }
+}

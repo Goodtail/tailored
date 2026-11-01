@@ -1,0 +1,275 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+
+import type { Deck, Limit, Pr } from '../types'
+
+const PANE = 'session-deck'
+const MAX_HISTORY = 60
+const PR_EVERY_MS = 60_000
+const BLOCKS = '▁▂▃▄▅▆▇█'
+
+// Change a tag when the shape it guards changes: it declines what an earlier
+// version stored, which outlives a reload.
+const deck = atom({ plugin: 'session-deck', key: 'deck' } as const, null, {
+  shape: 'deck-1',
+})
+const history = atom({ plugin: 'session-deck', key: 'history' } as const, [], {
+  shape: 'history-1',
+})
+const todo = atom({ plugin: 'session-deck', key: 'todo' } as const, null, {
+  shape: 'todo-1',
+})
+const isHidden = atom({ plugin: 'session-deck', key: 'isHidden' } as const, false)
+const warned = atom({ plugin: 'session-deck', key: 'warned' } as const, false)
+
+const bar = (percent: number, width: number) => {
+  const filled = Math.round((Math.min(100, Math.max(0, percent)) / 100) * width)
+  return '█'.repeat(filled) + '░'.repeat(width - filled)
+}
+const spark = (list: number[]) =>
+  list.map(p => BLOCKS[Math.min(7, Math.floor((p / 100) * 8))]).join('')
+const k = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n))
+const tone = (p: number) => (p >= 85 ? 'red' : p >= 70 ? 'yellow' : 'green')
+const base = (path: string) => path.split('/').filter(Boolean).pop() ?? path
+const limitName = (kind: string) =>
+  kind === 'five_hour' ? '5h' : kind === 'seven_day' ? '7d' : kind
+const resets = (iso?: string) => {
+  if (iso === undefined) return ''
+  const ms = Date.parse(iso) - Date.now()
+  if (Number.isNaN(ms) || ms <= 0) return ''
+  const m = Math.round(ms / 60000)
+  return m >= 60 ? ` ↻${Math.floor(m / 60)}h${m % 60 ? `${m % 60}m` : ''}` : ` ↻${m}m`
+}
+
+async function git($: EngineInterface, argv: string[]): Promise<string | null> {
+  try {
+    const r = await $.process.run(['git', ...argv], { timeoutMs: 5000 })
+    return r.exitCode === 0 ? r.stdout.trim() : null
+  } catch {
+    return null
+  }
+}
+
+async function fetchPrs($: EngineInterface): Promise<{ prs: Pr[] | null; note?: string }> {
+  try {
+    const r = await $.process.run(
+      ['gh', 'pr', 'list', '--state', 'open', '--limit', '10', '--json',
+        'number,title,headRefName,isDraft,reviewDecision'],
+      { timeoutMs: 15000 },
+    )
+    if (r.exitCode !== 0) return { prs: null, note: 'gh: no PRs (not a GitHub repo, or not signed in)' }
+    const rows = JSON.parse(r.stdout) as {
+      number: number
+      title: string
+      headRefName: string
+      isDraft: boolean
+      reviewDecision?: string
+    }[]
+    return {
+      prs: rows.map(p => ({
+        number: p.number,
+        title: p.title,
+        branch: p.headRefName,
+        isDraft: p.isDraft,
+        review: p.reviewDecision || undefined,
+      })),
+    }
+  } catch {
+    return { prs: null, note: 'gh (GitHub CLI) is not installed' }
+  }
+}
+
+let lastPrFetch = 0
+
+async function refresh($: EngineInterface, options: Readonly<Record<string, unknown>>, force: boolean) {
+  const usage = await $.session.usage()
+  const { tokens, window, percent } = usage.context
+  if (tokens === undefined || percent === undefined) return
+
+  const [model, dir] = await Promise.all([$.session.model(), $.session.cwd()])
+  const [branch, top, gitDir, common, status] = await Promise.all([
+    git($, ['rev-parse', '--abbrev-ref', 'HEAD']),
+    git($, ['rev-parse', '--show-toplevel']),
+    git($, ['rev-parse', '--absolute-git-dir']),
+    git($, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
+    git($, ['status', '--porcelain']),
+  ])
+  const isWorktree = gitDir !== null && common !== null && gitDir !== common
+  const limits: Limit[] = usage.rateLimits.map(r => ({
+    kind: r.kind,
+    percent: r.percentUsed,
+    resetsAt: r.resetsAt,
+  }))
+
+  const previous = await read($, deck)
+  let prs = previous?.prs ?? null
+  let prsNote = previous?.prsNote
+  const isDue = Date.now() - lastPrFetch > PR_EVERY_MS
+  if (options.showPrs !== false && branch !== null && (force || isDue)) {
+    lastPrFetch = Date.now()
+    const got = await fetchPrs($)
+    prs = got.prs
+    prsNote = got.note
+  }
+
+  const next: Deck = {
+    model,
+    percent,
+    tokens,
+    window,
+    usd: usage.cost?.usd,
+    limits,
+    dir,
+    branch: branch === 'HEAD' ? '(detached)' : branch,
+    worktree: isWorktree && top !== null ? base(top) : null,
+    changes: status ? status.split('\n').filter(Boolean).length : 0,
+    prs: options.showPrs === false ? null : prs,
+    prsNote,
+  }
+  await update($, deck, () => next)
+  await update($, history, list => [...list, percent].slice(-MAX_HISTORY))
+  $.ui.status(`${model} · ctx ${percent}%`)
+
+  const warnAt = typeof options.warnPercent === 'number' ? options.warnPercent : 80
+  const isWarned = await read($, warned)
+  if (percent >= warnAt && !isWarned) {
+    $.ui.toast(`Context ${percent}% full (${k(tokens)}/${k(window)})`)
+    await update($, warned, () => true)
+  } else if (percent < warnAt - 10 && isWarned) {
+    await update($, warned, () => false)
+  }
+}
+
+export const register: Register = (on, options) => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'deck',
+      description: 'Open the session deck pane (model, context, limits, branch, PRs, todos)',
+    })
+    await refresh($, options, true)
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'deck' }, async $ => {
+    const placed = await $.ui.open({ id: PANE, title: 'Session deck' })
+    await update($, isHidden, () => false)
+    await refresh($, options, true)
+
+    return {
+      text: placed.isPlaced
+        ? 'Session deck opened.'
+        : 'No room for the pane here; the band above the prompt shows the essentials.',
+    }
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    await refresh($, options, false)
+
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
+    const items = e.input.todos
+    const current = items.find(t => t.status === 'in_progress')
+    await update($, todo, () => ({
+      done: items.filter(t => t.status === 'completed').length,
+      total: items.length,
+      current: current?.activeForm,
+    }))
+
+    return next(e)
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const d = await read($, deck)
+    if (e.props.hasSurvey || d === null || (await read($, isHidden))) return next(e)
+
+    const t = await read($, todo)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const mine = d.prs?.find(p => p.branch === d.branch)
+    const limit = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
+
+    return (
+      <Box>
+        <Text bold>{d.model}</Text>
+        <Text color={tone(d.percent)}> {bar(d.percent, 8)} {d.percent}%</Text>
+        <Text dimColor> {k(d.tokens)}/{k(d.window)}</Text>
+        {limit !== undefined && (
+          <Text color={tone(limit.percent)}> {limitName(limit.kind)} {limit.percent}%</Text>
+        )}
+        {d.branch !== null && (
+          <Text> ⎇ {d.branch}{d.worktree !== null ? ` (wt ${d.worktree})` : ''}{d.changes > 0 ? ` ±${d.changes}` : ''}</Text>
+        )}
+        {mine !== undefined && <Text color="cyan"> PR#{mine.number}</Text>}
+        {options.showDirectory === true && <Text dimColor> {base(d.dir)}</Text>}
+        {t !== null && t.total > 0 && <Text> ☑ {t.done}/{t.total}</Text>}
+        <Text> </Text>
+        <Button key="open" label="Deck" onPress={() => $.ui.open({ id: PANE, title: 'Session deck' })} />
+        <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const d = await read($, deck)
+    if (d === null) {
+      return <Text dimColor>No reading yet. It appears after Claude's first response.</Text>
+    }
+    const hist = await read($, history)
+    const t = await read($, todo)
+    const width = Math.max(10, Math.min(MAX_HISTORY, (e.viewport?.columns ?? 40) - 4))
+
+    return (
+      <Box flexDirection="column">
+        <Text bold>Model</Text>
+        <Text>{d.model}</Text>
+        <Text> </Text>
+        <Text bold>Context</Text>
+        <Text color={tone(d.percent)}>{bar(d.percent, 20)} {d.percent}%</Text>
+        <Text dimColor>{k(d.tokens)} of {k(d.window)} tokens</Text>
+        <Text>{spark(hist.slice(-width))}</Text>
+        <Text> </Text>
+        <Text bold>Usage limits</Text>
+        {d.limits.length === 0 && <Text dimColor>No limit reported (API key, or no response yet).</Text>}
+        {d.limits.map(l => (
+          <Text color={tone(l.percent)}>
+            {limitName(l.kind)} {bar(l.percent, 10)} {l.percent}% used, {Math.round((100 - l.percent) * 10) / 10}% left{resets(l.resetsAt)}
+          </Text>
+        ))}
+        {d.usd !== undefined && <Text dimColor>Session cost ${d.usd.toFixed(2)}</Text>}
+        <Text> </Text>
+        <Text bold>Git</Text>
+        {d.branch === null ? (
+          <Text dimColor>Not a git repository.</Text>
+        ) : (
+          <Text>
+            ⎇ {d.branch}
+            {d.worktree !== null ? `  · worktree ${d.worktree}` : ''}
+            {d.changes > 0 ? `  · ${d.changes} changed` : '  · clean'}
+          </Text>
+        )}
+        {options.showDirectory === true && <Text dimColor>{d.dir}</Text>}
+        <Text> </Text>
+        <Text bold>Pull requests</Text>
+        {d.prs === null && <Text dimColor>{d.prsNote ?? 'Not loaded.'}</Text>}
+        {d.prs !== null && d.prs.length === 0 && <Text dimColor>No open PRs.</Text>}
+        {d.prs?.map(p => (
+          <Text color={p.branch === d.branch ? 'cyan' : undefined}>
+            #{p.number} {p.isDraft ? '[draft] ' : ''}{p.title.slice(0, 48)} ({p.branch}){p.review ? ` · ${p.review.toLowerCase()}` : ''}
+          </Text>
+        ))}
+        <Text> </Text>
+        <Text bold>Todos</Text>
+        {t === null ? (
+          <Text dimColor>No todo list in this session yet.</Text>
+        ) : (
+          <Text>{t.done}/{t.total} done{t.current ? ` · now: ${t.current}` : ''}</Text>
+        )}
+        <Text> </Text>
+        <Button key="refresh" label="Refresh" onPress={() => refresh($, options, true)} />
+      </Box>
+    )
+  })
+}

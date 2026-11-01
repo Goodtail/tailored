@@ -1,0 +1,29 @@
+{
+  "name": "session-deck",
+  "version": "0.1.0",
+  "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
+  "author": { "name": "Goodtail" },
+  "license": "MIT",
+  "keywords": ["mod", "hud", "context", "usage", "git", "worktree", "pr", "todo"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showDirectory": {
+      "type": "boolean",
+      "title": "Show directory",
+      "description": "Show the working directory in the band.",
+      "default": false
+    },
+    "showPrs": {
+      "type": "boolean",
+      "title": "Show pull requests",
+      "description": "List open pull requests of the repository (needs the GitHub CLI, gh, signed in).",
+      "default": true
+    },
+    "warnPercent": {
+      "type": "number",
+      "title": "Context warning at (%)",
+      "description": "Show a toast once when the context window passes this percent.",
+      "default": 80
+    }
+  }
+}
