@@ -1,0 +1,49 @@
+{
+  "name": "rule-guard",
+  "version": "0.1.0",
+  "description": "Enforces your rules on Bash commands in code, not by asking nicely: blocks AI attribution in commits and PRs, asks before destructive commands, and blocks patterns you choose, optionally only under certain folders.",
+  "author": {
+    "name": "Goodtail"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mod",
+    "guard",
+    "git",
+    "commit",
+    "safety",
+    "rules"
+  ],
+  "userConfig": {
+    "blockAiAttribution": {
+      "type": "boolean",
+      "title": "Block AI attribution",
+      "description": "Refuse git commit, gh pr and git tag commands whose text carries a Co-Authored-By: Claude trailer or a 'Generated with Claude Code' footer. Claude is told to remove it and retry.",
+      "default": true
+    },
+    "confirmDestructive": {
+      "type": "boolean",
+      "title": "Ask before destructive commands",
+      "description": "Ask you first before rm -rf on a broad target, git push --force, git reset --hard, git clean -f, DROP TABLE/DATABASE and chmod -R 777.",
+      "default": true
+    },
+    "customDenyPattern": {
+      "type": "string",
+      "title": "Block commands matching (regex)",
+      "description": "A regular expression. A Bash command that matches is refused. Example: 9VP73Q9QX3 to keep one Apple team ID out of commands. Empty turns it off.",
+      "default": ""
+    },
+    "customDenyScope": {
+      "type": "string",
+      "title": "Only when the session folder contains",
+      "description": "Comma-separated path fragments, such as /company/ or a project name. The custom pattern applies only when the session's folder path contains one of them. Empty means everywhere.",
+      "default": ""
+    },
+    "customDenyMessage": {
+      "type": "string",
+      "title": "Message for the custom block",
+      "description": "What Claude is told when the custom pattern blocks a command.",
+      "default": "This command matches a pattern you blocked."
+    }
+  }
+}

@@ -4,8 +4,13 @@
   "plugins": [
     {
       "name": "session-deck",
-      "source": "./",
-      "description": "Live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos."
+      "source": "./plugins/session-deck",
+      "description": "Live deck for your Claude Code session: model, context, usage limits, cache countdown, git branch and worktree, PRs, todos and per-message token spend."
+    },
+    {
+      "name": "rule-guard",
+      "source": "./plugins/rule-guard",
+      "description": "Enforce rules on Bash commands in code: no AI attribution in commits, confirm destructive commands, custom block patterns."
     }
   ]
 }
