@@ -431,9 +431,11 @@ export const register: Register = (on, options) => {
           {d.usd !== undefined && (
             <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text>{d.turnUsd !== undefined ? <Text dimColor> (+${d.turnUsd.toFixed(2)})</Text> : ''}<Text dimColor> {priceText(model)}</Text></Text>
           )}
+        </Box>
+        <Box>
           {sp !== null && (
             <Text>
-              {'  '}📨 {sp.calls} call{sp.calls === 1 ? '' : 's'}
+              📨 {sp.calls} call{sp.calls === 1 ? '' : 's'}
               <Text dimColor> · </Text>
               {k(sp.resent)} re-read
               <Text dimColor> · </Text>
@@ -443,7 +445,7 @@ export const register: Register = (on, options) => {
             </Text>
           )}
           {t !== null && t.total > 0 && (
-            <Text>  ☑ <Text bold>{t.done}/{t.total}</Text>{t.current ? <Text dimColor> {t.current}</Text> : ''}</Text>
+            <Text>{sp !== null ? '  ' : ''}☑ <Text bold>{t.done}/{t.total}</Text>{t.current ? <Text dimColor> {t.current}</Text> : ''}</Text>
           )}
         </Box>
       </Box>
