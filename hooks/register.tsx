@@ -470,73 +470,105 @@ export const register: Register = (on, options) => {
     if (d === null) {
       return <Text dimColor>No reading yet. It appears after Claude's first response.</Text>
     }
+    const model = await $.session.model()
     const hist = await read($, history)
     const t = await read($, todo)
     const sum = progress(t)
     const tot = await read($, totals)
-    const width = Math.max(10, Math.min(MAX_HISTORY, (e.viewport?.columns ?? 40) - 4))
+    const sp = await read($, spend)
+    const cols = Math.max(20, e.props.bodyColumns ?? 40)
+    const width = Math.max(10, Math.min(MAX_HISTORY, cols - 2))
+    const line = '─'.repeat(cols - 1)
+    const price = priceText(model)
+    const section = (icon: string, title: string, color: string) => (
+      <Box flexDirection="column">
+        <Text dimColor>{line}</Text>
+        <Text bold color={color}>{icon} {title}</Text>
+      </Box>
+    )
 
     return (
       <Box flexDirection="column">
-        <Text bold>Model</Text>
-        <Text>{prettyModel(d.model)}{prettyModel(d.model) !== d.model ? ` (${d.model})` : ''}</Text>
-        <Text> </Text>
-        <Text bold>Context</Text>
-        <Text color={tone(d.percent)}>{bar(d.percent, 20)} {d.percent}%</Text>
+        {section('🤖', 'Model', 'magenta')}
+        <Text bold>{prettyModel(model)}</Text>
+        {prettyModel(model) !== model && <Text dimColor>{model}</Text>}
+        {price !== '' && <Text dimColor>{price}</Text>}
+
+        {section('🧠', 'Context', tone(d.percent))}
+        <Text>
+          <Text bold color={tone(d.percent)}>{d.percent}%</Text>
+          <Text color={tone(d.percent)}> [{bar(d.percent, 16)}]</Text>
+        </Text>
         <Text dimColor>{k(d.tokens)} of {k(d.window)} tokens</Text>
-        <Text>{spark(hist.slice(-width))}</Text>
-        <Text> </Text>
-        <Text bold>Usage limits</Text>
+        <Text color={tone(d.percent)}>{spark(hist.slice(-width))}</Text>
+        {d.percent >= 50 && (
+          <Text color={tone(d.percent)}>💡 /compact or a new session makes each request cheaper.</Text>
+        )}
+
+        {section('⏳', 'Usage limits', 'yellow')}
         {d.limits.length === 0 && <Text dimColor>No limit reported (API key, or no response yet).</Text>}
         {d.limits.map(l => (
-          <Text color={tone(l.percent)}>
-            {limitName(l.kind)} {bar(l.percent, 10)} {l.percent}% used, {Math.round((100 - l.percent) * 10) / 10}% left{resets(l.resetsAt)}
+          <Text>
+            <Text bold>{limitName(l.kind)} </Text>
+            <Text color={tone(l.percent)}>[{bar(l.percent, 10)}] {l.percent}% used</Text>
+            <Text dimColor> · {Math.round((100 - l.percent) * 10) / 10}% left{resets(l.resetsAt)}</Text>
           </Text>
         ))}
-        {d.usd !== undefined && (
+
+        {section('💰', 'Cost', 'green')}
+        {d.usd === undefined ? (
+          <Text dimColor>No cost ledger here.</Text>
+        ) : (
           <Text>
-            API-equivalent cost ${d.usd.toFixed(2)}
-            {d.turnUsd !== undefined ? ` (last turn +$${d.turnUsd.toFixed(2)})` : ''}
+            <Text bold color="green">${d.usd.toFixed(2)}</Text>
+            <Text dimColor> API-equivalent, this session</Text>
+            {d.turnUsd !== undefined && <Text> (this message +${d.turnUsd.toFixed(2)})</Text>}
           </Text>
         )}
-        {priceText(d.model) !== '' && <Text dimColor>{prettyModel(d.model)} {priceText(d.model)}</Text>}
-        <Text> </Text>
-        <Text bold>This session, in total</Text>
+
+        {section('📨', 'This message', 'blue')}
+        {sp === null || sp.calls === 0 ? (
+          <Text dimColor>Nothing counted yet.</Text>
+        ) : (
+          <Text>
+            {sp.calls} call{sp.calls === 1 ? '' : 's'} · {k(sp.resent)} re-read · {k(sp.fresh + sp.written)} new · {k(sp.output)} out
+          </Text>
+        )}
+        <Text dimColor>All of this session</Text>
         {tot === null || tot.calls === 0 ? (
-          <Text dimColor>Nothing counted yet (counts from when the mod loaded).</Text>
+          <Text dimColor>Counts from when the mod loaded.</Text>
         ) : (
           <Box flexDirection="column">
-            <Text>{tot.messages} messages · {tot.calls} model requests</Text>
-            <Text>{k(tot.resent)} re-read · {k(tot.fresh + tot.written)} new · {k(tot.output)} out</Text>
-            <Text dimColor>
-              Re-read sums the context sent again on every request, so it
-              dwarfs the {k(d.tokens)} the window holds now.
+            <Text>
+              {tot.messages} messages · {tot.calls} requests · {k(tot.resent)} re-read · {k(tot.fresh + tot.written)} new · {k(tot.output)} out
             </Text>
+            <Text dimColor>Re-read sums the context sent again on every request, so it dwarfs the {k(d.tokens)} the window holds now.</Text>
           </Box>
         )}
-        <Text> </Text>
-        <Text bold>Git</Text>
+
+        {section('🌿', 'Git', 'cyan')}
         {d.branch === null ? (
           <Text dimColor>Not a git repository.</Text>
         ) : (
           <Text>
-            ⎇ {d.branch}
-            {d.worktree !== null ? `  · worktree ${d.worktree}` : ''}
-            {d.changes > 0 ? `  · ${d.changes} changed` : '  · clean'}
+            <Text bold color="cyan">{d.branch}</Text>
+            {d.worktree !== null && <Text> · worktree <Text bold>{d.worktree}</Text></Text>}
+            {d.changes > 0 ? <Text color="yellow"> · {d.changes} changed</Text> : <Text color="green"> · clean</Text>}
           </Text>
         )}
-        {options.showDirectory === true && <Text dimColor>{d.dir}</Text>}
-        <Text> </Text>
-        <Text bold>Pull requests</Text>
+        {options.showDirectory !== false && <Text dimColor>📁 {tailPath(d.dir, cols - 4)}</Text>}
+
+        {section('🔀', 'Pull requests', 'blue')}
         {d.prs === null && <Text dimColor>{d.prsNote ?? 'Not loaded.'}</Text>}
         {d.prs !== null && d.prs.length === 0 && <Text dimColor>No open PRs.</Text>}
         {d.prs?.map(p => (
-          <Text color={p.branch === d.branch ? 'cyan' : undefined}>
-            #{p.number} {p.isDraft ? '[draft] ' : ''}{p.title.slice(0, 48)} ({p.branch}){p.review ? ` · ${p.review.toLowerCase()}` : ''}
+          <Text color={p.branch === d.branch ? 'cyan' : undefined} bold={p.branch === d.branch}>
+            #{p.number} {p.isDraft ? '[draft] ' : ''}{p.title.slice(0, Math.max(10, cols - 24))}
+            <Text dimColor> ({p.branch}){p.review ? ` · ${p.review.toLowerCase()}` : ''}</Text>
           </Text>
         ))}
-        <Text> </Text>
-        <Text bold>Todos{sum !== null ? ` (${sum.done}/${sum.total})` : ''}</Text>
+
+        {section('☑', `Todos${sum !== null ? ` ${sum.done}/${sum.total}` : ''}`, 'yellow')}
         {sum === null && <Text dimColor>No todo list yet. Claude makes one for multi-step work.</Text>}
         {t?.items
           .filter(i => i.status !== 'deleted')
@@ -547,11 +579,12 @@ export const register: Register = (on, options) => {
               dimColor={i.status === 'completed'}
               color={i.status === 'in_progress' ? 'yellow' : undefined}
             >
-              {i.status === 'completed' ? '✔' : i.status === 'in_progress' ? '▶' : '○'} {i.text.slice(0, 60)}
+              {i.status === 'completed' ? '✔' : i.status === 'in_progress' ? '▶' : '○'} {i.text.slice(0, Math.max(10, cols - 4))}
             </Text>
           ))}
-        <Text> </Text>
-        <Button key="refresh" label="Refresh" onPress={() => refresh($, options, true)} />
+
+        <Text dimColor>{line}</Text>
+        <Button key="refresh" label="↻ Refresh" onPress={() => refresh($, options, true)} />
       </Box>
     )
   })

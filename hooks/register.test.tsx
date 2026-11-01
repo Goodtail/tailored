@@ -98,7 +98,7 @@ test('the pane lists the todos Claude wrote', async ($, on) => {
   })
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /Todos/ }))?.text).toBe('Todos (1/3)')
+  expect((await ui.find({ type: 'Text', text: /Todos/ }))?.text).toBe('☑ Todos 1/3')
   expect((await ui.find({ type: 'Text', text: /Shipping it/ }))?.text).toContain('▶')
   expect((await ui.find({ type: 'Text', text: /Write tests/ }))?.text).toContain('✔')
   await ui.unmount()
