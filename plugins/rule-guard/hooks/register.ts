@@ -37,10 +37,14 @@ const DESTRUCTIVE: { name: string; test: RegExp }[] = [
 // ($(cat <<'EOF' ...)) or from -m "..." / -m '...'. null when it cannot be read
 // (-F file, an editor, --amend with no message), so nothing is judged then.
 function commitSubject(command: string): string | null {
-  if (!/\bgit\s+commit\b/.test(command)) return null
-  const here = /<<-?\s*['"]?\w+['"]?[ \t]*\n([^\n]*)/.exec(command)
+  const at = command.search(/\bgit\s+commit\b/)
+  if (at === -1) return null
+  // Only what comes after the commit command is the commit's: a command that also
+  // writes other files with a heredoc must not have those read as the message.
+  const rest = command.slice(at)
+  const here = /(?:-m|--message)[ =]\s*"\$\(cat\s+<<-?\s*['"]?\w+['"]?[ \t]*\n([^\n]*)/.exec(rest)
   if (here !== null) return here[1].trim()
-  const quoted = /(?:-m|--message)[ =]\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/.exec(command)
+  const quoted = /(?:-m|--message)[ =]\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/.exec(rest)
   if (quoted !== null) return (quoted[1] ?? quoted[2] ?? '').split('\n')[0].trim()
   return null
 }

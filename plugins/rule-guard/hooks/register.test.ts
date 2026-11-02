@@ -86,3 +86,10 @@ test('/guard-status lists the rules and what was refused', async ($, on) => {
   expect(out.text).toContain('AI attribution')
   expect(out.text).toContain('Refused 1 time')
 })
+
+test('a heredoc that writes another file is not read as the commit message', { options: { requireKoreanCommit: true } }, async ($, on) => {
+  stub(on)
+  const command = "cat > README.md <<'EOF'\n# readme title\nEOF\ngit commit -m \"[기능] 문서 추가\""
+  const ran = await $.tool.call({ tool: 'Bash', command })
+  expect(ran.deny).toBeUndefined()
+})
