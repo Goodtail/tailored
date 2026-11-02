@@ -7,6 +7,7 @@ Add this repository once as a marketplace, then install only the mods you want.
 /plugin marketplace add Goodtail/tailored
 /plugin install session-deck@tailored
 /plugin install rule-guard@tailored
+/plugin install agent-watch@tailored
 ```
 
 Or in one line each, from a Claude Code session:
@@ -19,6 +20,7 @@ Or in one line each, from a Claude Code session:
 | Mod | What it does |
 | --- | --- |
 | [session-deck](plugins/session-deck) | A live deck above the prompt and in a `/deck` pane: model, context, usage limits, prompt-cache countdown, git branch and worktree, pull requests, todos and what each message cost in tokens. |
+| [agent-watch](plugins/agent-watch) | Watch your helpers work: each subagent model, tokens and estimated cost, and a file list that marks what was read and what was changed, and by whom. |
 | [rule-guard](plugins/rule-guard) | Enforces your rules on Bash commands in code: no AI attribution in commits, a question before destructive commands, and block patterns you choose, optionally only under certain folders. |
 
 A mod runs with your permissions. Read its code, or run `claude plugin validate plugins/<mod>`

@@ -1,0 +1,29 @@
+{
+  "name": "agent-watch",
+  "version": "0.1.0",
+  "description": "Watch your helpers work: each subagent's model, tokens and estimated cost, and a file tree that marks what was read and what was changed, by whom.",
+  "author": { "name": "Goodtail" },
+  "license": "MIT",
+  "keywords": ["mod", "subagent", "cost", "files", "tree", "progress"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showProgressLine": {
+      "type": "boolean",
+      "title": "Progress line above the prompt",
+      "description": "While helpers (subagents) exist, show one line above the prompt: how many are running, the estimated cost so far and how many files were changed.",
+      "default": true
+    },
+    "toastWhenHelperFinishes": {
+      "type": "boolean",
+      "title": "Toast when a helper finishes",
+      "description": "A short toast with the helper's name, estimated cost and the files it changed.",
+      "default": true
+    },
+    "maxFiles": {
+      "type": "number",
+      "title": "Files shown in the pane",
+      "description": "The most recently active files listed in the /agents pane. Default 40.",
+      "default": 40
+    }
+  }
+}

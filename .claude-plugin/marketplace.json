@@ -1,6 +1,8 @@
 {
   "name": "tailored",
-  "owner": { "name": "Goodtail" },
+  "owner": {
+    "name": "Goodtail"
+  },
   "plugins": [
     {
       "name": "session-deck",
@@ -11,6 +13,11 @@
       "name": "rule-guard",
       "source": "./plugins/rule-guard",
       "description": "Enforce rules on Bash commands in code: no AI attribution in commits, confirm destructive commands, custom block patterns."
+    },
+    {
+      "name": "agent-watch",
+      "source": "./plugins/agent-watch",
+      "description": "Watch your helpers work: each subagent model, tokens and estimated cost, and a file list marking what was read and what was changed, by whom."
     }
   ]
 }
