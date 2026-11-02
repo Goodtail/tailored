@@ -629,11 +629,41 @@ export const register: Register = (on, options) => {
     const d = await read($, deck)
     if (!isBandOn(options) || e.props.hasSurvey || d === null) return next(e)
 
+    const { Box, Text } = $.ui.resolve(e)
+    const cols = Math.max(24, e.props.bodyColumns ?? 80)
+    const isWide = cols >= 90
+    const isMid = cols >= 62
+    const barWidth = isWide ? 10 : isMid ? 8 : 6
+    const rule = '─'.repeat(cols - 1)
+
+    // Display width of a piece of text: an emoji takes two cells.
+    const cells = (t: string) => t.length + (t.match(/\p{Extended_Pictographic}/gu)?.length ?? 0)
+    // A piece of a row: plain text for measuring, a node to draw. The lower the
+    // priority number, the longer it stays when the row is too wide; 0 never goes.
+    type Seg = { plain: string; prio: number; node: unknown }
+    const seg = (plain: string, prio: number, node: unknown): Seg => ({ plain, prio, node })
+    const clip = (t: string, n: number) => (t.length <= n ? t : `…${t.slice(t.length - (n - 1))}`)
+    const used = (segs: Seg[]) => segs.reduce((n, g) => n + cells(g.plain), 0) + 2 * Math.max(0, segs.length - 1)
+    // One row: drop the least important pieces until it fits, then draw it as a
+    // single line that is cut at the edge rather than broken into odd pieces.
+    const row = (segs: Seg[]) => {
+      const kept = [...segs]
+      while (used(kept) > cols - 2) {
+        let worst = -1
+        kept.forEach((g, i) => {
+          if (g.prio > 0 && (worst === -1 || g.prio > kept[worst].prio)) worst = i
+        })
+        if (worst === -1) break
+        kept.splice(worst, 1)
+      }
+
+      return <Text wrap="truncate-end">{kept.flatMap((g, i) => (i === 0 ? [g.node] : ['  ', g.node]))}</Text>
+    }
+
     const viewed = e.props.view?.agentId
     if (viewed !== undefined) {
       const all = await read($, agents)
-      const mine = all[viewed]
-      const { Box, Text } = $.ui.resolve(e)
+      const stat = all[viewed]
       let label = 'subagent'
       try {
         const found = (await $.agent.list()).find(a => a.id === viewed)
@@ -641,46 +671,44 @@ export const register: Register = (on, options) => {
       } catch {
         label = 'subagent'
       }
-      if (mine === undefined) {
+      if (stat === undefined) {
         return (
           <Box flexDirection="column">
-            <Text dimColor>{'─'.repeat(Math.max(10, (e.props.bodyColumns ?? 80) - 1))}</Text>
-            <Text>🧬 <Text bold color="magenta">{label}</Text><Text dimColor> · no request seen yet; the main figures are not this agent's</Text></Text>
+            <Text dimColor>{rule}</Text>
+            {row([
+              seg(`🧬 ${clip(label, 30)}`, 0, <Text>🧬 <Text bold color="magenta">{clip(label, 30)}</Text></Text>),
+              seg('no request seen yet; the main figures are not this agent\'s', 1, <Text dimColor>no request seen yet; the main figures are not this agent's</Text>),
+            ])}
           </Box>
         )
       }
-      const pct = Math.min(100, Math.round((mine.tokens / d.window) * 100))
+      const pct = Math.min(100, Math.round((stat.tokens / d.window) * 100))
 
       return (
         <Box flexDirection="column">
-          <Text dimColor>{'─'.repeat(Math.max(10, (e.props.bodyColumns ?? 80) - 1))}</Text>
-          <Box>
-            <Text>🧬 </Text>
-            <Text bold color="magenta">{label}</Text>
-            <Text dimColor>  {prettyModel(mine.model)} · this agent's own figures</Text>
-          </Box>
-          <Box>
-            <Text>🧠 Context </Text>
-            <Text bold color={tone(pct)}>{pct}%</Text>
-            <Text color={tone(pct)}> [{bar(pct, 10)}]</Text>
-            <Text dimColor> {k(mine.tokens)}/{k(d.window)}</Text>
-          </Box>
-          <Box>
-            <Text>📨 {mine.calls} call{mine.calls === 1 ? '' : 's'}</Text>
-            <Text dimColor> · </Text>
-            <Text>{k(mine.resent)} re-read</Text>
-            <Text dimColor> · </Text>
-            <Text>{k(mine.fresh)} new</Text>
-            <Text dimColor> · </Text>
-            <Text>{k(mine.output)} out</Text>
-          </Box>
+          <Text dimColor>{rule}</Text>
+          {row([
+            seg(`🧬 ${clip(label, 30)}`, 0, <Text>🧬 <Text bold color="magenta">{clip(label, 30)}</Text></Text>),
+            seg(prettyModel(stat.model), 1, <Text dimColor>{prettyModel(stat.model)}</Text>),
+            seg("this agent's own figures", 3, <Text dimColor>this agent's own figures</Text>),
+          ])}
+          {row([
+            seg(`🧠 ${pct}%`, 0, <Text>🧠 <Text bold color={tone(pct)}>{pct}%</Text></Text>),
+            seg(`[${bar(pct, barWidth)}]`, 2, <Text color={tone(pct)}>[{bar(pct, barWidth)}]</Text>),
+            seg(`${k(stat.tokens)}/${k(d.window)}`, 1, <Text dimColor>{k(stat.tokens)}/{k(d.window)}</Text>),
+          ])}
+          {row([
+            seg(`📨 ${stat.calls} call${stat.calls === 1 ? '' : 's'}`, 0, <Text>📨 {stat.calls} call{stat.calls === 1 ? '' : 's'}</Text>),
+            seg(`${k(stat.resent)} re-read`, 1, <Text>{k(stat.resent)} re-read</Text>),
+            seg(`${k(stat.fresh)} new`, 2, <Text>{k(stat.fresh)} new</Text>),
+            seg(`${k(stat.output)} out`, 3, <Text>{k(stat.output)} out</Text>),
+          ])}
         </Box>
       )
     }
 
     const t = progress(await read($, todo))
     const model = await $.session.model()
-    const { Box, Text } = $.ui.resolve(e)
     const mine = d.prs?.find(p => p.branch === d.branch)
     const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
     const week = d.limits.find(l => l.kind === 'seven_day' && l !== five)
@@ -694,80 +722,88 @@ export const register: Register = (on, options) => {
     const compactAt = typeof options.compactHintPercent === 'number' ? options.compactHintPercent : 50
     const cachePrice = priceOf(model)?.cache
     const perCall = cachePrice !== undefined ? (d.tokens / 1_000_000) * cachePrice : null
-    // Columns the first row already holds, so the path gets what is left.
-    const leftLen =
-      3 + prettyModel(model).length +
-      (d.branch !== null ? 5 + d.branch.length + (d.worktree !== null ? 6 + d.worktree.length : 0) : 0) +
-      (d.changes > 0 ? 2 + String(d.changes).length : 0) +
-      (mine !== undefined ? 8 + String(mine.number).length : 0) +
-      (d.prs !== null && d.prs.length > 0 ? 8 + String(d.prs.length).length : 0)
+
+    // Row 1: model, branch, changes, PR, then the folder with whatever room is left.
+    const head: Seg[] = [seg(`🤖 ${prettyModel(model)}`, 0, <Text>🤖 <Text bold color="magenta">{prettyModel(model)}</Text></Text>)]
+    if (d.branch !== null) {
+      const name = `${clip(d.branch, Math.max(10, Math.floor(cols / 3)))}${d.worktree !== null && isMid ? ` (wt ${clip(d.worktree, 14)})` : ''}`
+      head.push(seg(`🌿 ${name}`, 1, <Text color="cyan">🌿 {name}</Text>))
+    }
+    if (d.changes > 0) head.push(seg(`±${d.changes}`, 2, <Text color="yellow">±{d.changes}</Text>))
+    if (mine !== undefined) {
+      const pr = `🔀 PR#${mine.number}${isWide && d.prs !== null && d.prs.length > 1 ? ` (${d.prs.length} open)` : ''}`
+      head.push(seg(pr, 3, <Text color="blue">{pr}</Text>))
+    } else if (d.prs !== null && d.prs.length > 0 && isMid) {
+      head.push(seg(`🔀 ${d.prs.length} open`, 3, <Text color="blue">🔀 {d.prs.length} open</Text>))
+    }
+    if (options.showDirectory !== false) {
+      const room = cols - 2 - used(head) - 2 - 3
+      if (room >= 10) {
+        const path = tailPath(d.dir, room)
+        head.push(seg(`📁 ${path}`, 4, <Text dimColor>📁 {path}</Text>))
+      }
+    }
+
+    // Row 2: context, then the usage limits.
+    const ctx: Seg[] = [
+      isMid
+        ? seg(`🧠 Context ${d.percent}%`, 0, <Text>🧠 Context <Text bold color={tone(d.percent)}>{d.percent}%</Text></Text>)
+        : seg(`🧠 ${d.percent}%`, 0, <Text>🧠 <Text bold color={tone(d.percent)}>{d.percent}%</Text></Text>),
+      seg(`[${bar(d.percent, barWidth)}]`, 2, <Text color={tone(d.percent)}>[{bar(d.percent, barWidth)}]</Text>),
+      seg(`${k(d.tokens)}/${k(d.window)}`, 1, <Text dimColor>{k(d.tokens)}/{k(d.window)}</Text>),
+    ]
+    if (five !== undefined) {
+      ctx.push(seg(`⏳ ${limitName(five.kind)} ${five.percent}%`, 1, <Text>⏳ <Text color={tone(five.percent)}>{limitName(five.kind)} {five.percent}%</Text></Text>))
+      const reset = resets(five.resetsAt).trim()
+      if (reset !== '') ctx.push(seg(reset, 3, <Text dimColor>{reset}</Text>))
+    }
+    if (week !== undefined) ctx.push(seg(`7d ${week.percent}%`, 4, <Text color={tone(week.percent)}>7d {week.percent}%</Text>))
+
+    // Row 3: cost.
+    const money: Seg[] = []
+    if (d.usd !== undefined) {
+      money.push(seg(`💰 $${d.usd.toFixed(2)}`, 0, <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text></Text>))
+      if (d.turnUsd !== undefined) money.push(seg(`(+$${d.turnUsd.toFixed(2)})`, 2, <Text dimColor>(+${d.turnUsd.toFixed(2)})</Text>))
+      const price = priceText(model)
+      if (price !== '') money.push(seg(price, 5, <Text dimColor>{price}</Text>))
+    }
+
+    // Row 4: cache clock, what this message spent, todos.
+    const tail: Seg[] = []
+    if (left !== null) {
+      if (left > 0) {
+        const c = left > ttlMs * 0.4 ? 'green' : left > ttlMs * 0.15 ? 'yellow' : 'red'
+        tail.push(seg(`🧊 cache ${clock(left)} left`, 1, <Text color={c}>🧊 cache {clock(left)} left</Text>))
+      } else {
+        const msg = isMid ? `🧊 cache expired: next request re-caches ${k(d.tokens)}` : '🧊 cache expired'
+        tail.push(seg(msg, 1, <Text color="red">{msg}</Text>))
+      }
+    }
+    if (sp !== null) {
+      const callsText = `📨 ${sp.calls} call${sp.calls === 1 ? '' : 's'}`
+      const full = `${callsText} · ${k(sp.resent)} re-read · ${k(sp.fresh + sp.written)} new · ${k(sp.output)} out`
+      const mid = `${callsText} · ${k(sp.resent)} re-read · ${k(sp.fresh + sp.written)} new`
+      const small = `${callsText} · ${k(sp.resent)} re-read`
+      const text = cells(full) <= cols - 4 ? full : cells(mid) <= cols - 4 ? mid : small
+      tail.push(seg(text, 2, <Text>{text}</Text>))
+    }
+    if (t !== null && t.total > 0) {
+      const todoText = `☑ ${t.done}/${t.total}${t.current && isWide ? ` ${clip(t.current, 24)}` : ''}`
+      tail.push(seg(todoText, 3, <Text>☑ <Text bold>{t.done}/{t.total}</Text>{t.current && isWide ? <Text dimColor> {clip(t.current, 24)}</Text> : ''}</Text>))
+    }
+
+    const hint = isMid
+      ? `💡 Context is large: each request re-reads ${k(d.tokens)}${perCall !== null ? ` (~$${perCall.toFixed(2)})` : ''}. /compact or a new session makes the next ones cheaper.`
+      : `💡 ${k(d.tokens)} re-read per request: /compact or new session`
 
     return (
       <Box flexDirection="column">
-        <Text dimColor>{'─'.repeat(Math.max(10, (e.props.bodyColumns ?? 80) - 1))}</Text>
-        <Box>
-          <Text>🤖 </Text>
-          <Text bold color="magenta">{prettyModel(model)}</Text>
-          {d.branch !== null && (
-            <Text color="cyan">  🌿 {d.branch}{d.worktree !== null ? ` (wt ${d.worktree})` : ''}</Text>
-          )}
-          {d.changes > 0 && <Text color="yellow"> ±{d.changes}</Text>}
-          {mine !== undefined && <Text color="blue">  🔀 PR#{mine.number}</Text>}
-          {d.prs !== null && d.prs.length > 0 && <Text dimColor> ({d.prs.length} open)</Text>}
-          {options.showDirectory !== false && (
-            <Text dimColor>  📁 {tailPath(d.dir, Math.max(12, (e.props.bodyColumns ?? 80) - leftLen - 6))}</Text>
-          )}
-        </Box>
-        <Box>
-          <Text>🧠 Context </Text>
-          <Text bold color={tone(d.percent)}>{d.percent}%</Text>
-          <Text dimColor> used </Text>
-          <Text color={tone(d.percent)}>[{bar(d.percent, 10)}]</Text>
-          <Text dimColor> {k(d.tokens)}/{k(d.window)}</Text>
-          {five !== undefined && (
-            <Text>  ⏳ <Text color={tone(five.percent)}>{limitName(five.kind)} {five.percent}%</Text><Text dimColor>{resets(five.resetsAt)}</Text></Text>
-          )}
-          {week !== undefined && <Text color={tone(week.percent)}>  7d {week.percent}%</Text>}
-        </Box>
-        <Box>
-          {d.usd !== undefined && (
-            <Text>💰 <Text bold color="green">${d.usd.toFixed(2)}</Text>{d.turnUsd !== undefined ? <Text dimColor> (+${d.turnUsd.toFixed(2)})</Text> : ''}<Text dimColor> {priceText(model)}</Text></Text>
-          )}
-        </Box>
-        <Box>
-          {left !== null && (
-            <Text>
-              {left > 0 ? (
-                <Text color={left > ttlMs * 0.4 ? 'green' : left > ttlMs * 0.15 ? 'yellow' : 'red'}>🧊 cache {clock(left)} left</Text>
-              ) : (
-                <Text color="red">🧊 cache expired: the next request re-caches {k(d.tokens)}</Text>
-              )}
-              {sp !== null || t !== null ? '  ' : ''}
-            </Text>
-          )}
-          {sp !== null && (
-            <Text>
-              📨 {sp.calls} call{sp.calls === 1 ? '' : 's'}
-              <Text dimColor> · </Text>
-              {k(sp.resent)} re-read
-              <Text dimColor> · </Text>
-              {k(sp.fresh + sp.written)} new
-              <Text dimColor> · </Text>
-              {k(sp.output)} out
-            </Text>
-          )}
-          {t !== null && t.total > 0 && (
-            <Text>{sp !== null ? '  ' : ''}☑ <Text bold>{t.done}/{t.total}</Text>{t.current ? <Text dimColor> {t.current}</Text> : ''}</Text>
-          )}
-        </Box>
-        {d.percent >= compactAt && (
-          <Box>
-            <Text color={tone(d.percent)}>
-              💡 Context is large: each request re-reads {k(d.tokens)}
-              {perCall !== null ? ` (~$${perCall.toFixed(2)})` : ''}. /compact or a new session makes the next ones cheaper.
-            </Text>
-          </Box>
-        )}
+        <Text dimColor>{rule}</Text>
+        {row(head)}
+        {row(ctx)}
+        {money.length > 0 && row(money)}
+        {tail.length > 0 && row(tail)}
+        {d.percent >= compactAt && <Text wrap="truncate-end" color={tone(d.percent)}>{hint}</Text>}
       </Box>
     )
   })

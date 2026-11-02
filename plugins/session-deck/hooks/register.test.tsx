@@ -156,3 +156,25 @@ test('in a subagent view the band is about that agent, not the main conversation
   expect((await ui.find({ type: 'Text', text: /Scan the repo/ }))?.text).toContain('Scan the repo')
   await ui.unmount()
 })
+
+test('the band drops the least important pieces as the window narrows', async ($, on) => {
+  stubEngine(on)
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true })
+
+  const draw = async (bodyColumns: number) =>
+    $.ui.mount({
+      plugin: 'session-deck',
+      component: 'AbovePrompt',
+      surface: 'terminal',
+      props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns, scroll: { offset: 0, bodyRows: 10 } },
+    })
+
+  const wide = await draw(130)
+  expect(await wide.find({ type: 'Text', text: /Context/ })).toBeDefined()
+  await wide.unmount()
+
+  const narrow = await draw(40)
+  expect(await narrow.find({ type: 'Text', text: /🧠/ })).toBeDefined()
+  expect(await narrow.find({ type: 'Text', text: /per 1M/ })).toBeUndefined()
+  await narrow.unmount()
+})
