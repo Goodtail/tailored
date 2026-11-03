@@ -9,7 +9,7 @@ and which files were read or changed, and by whom.
   tokens (context re-read, new input, output), how long it ran, and an estimated cost.
 - **Files.** A list of files that were touched, newest first. `👁` marks a file that was
   only read (purple), `✎` marks one that was changed (yellow) with the lines added and
-  removed, and who touched it (`main` or a helper's name).
+  removed, and who touched it (`main` or a helper's name). File names are links: cmd+click opens the file in a terminal that supports links.
 - **A line above the prompt** while helpers exist:
   `🧬 2/3 helpers [██████░░] · 1 running · ≈$0.42 · ✎ 5 files`.
   It goes away five minutes after the last helper finishes.

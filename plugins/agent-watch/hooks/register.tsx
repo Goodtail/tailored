@@ -253,7 +253,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     const all = Object.entries(await read($, helpers)).sort((a, b) => b[1].startedAt - a[1].startedAt)
     const fileRows = Object.entries(await read($, files)).sort((a, b) => b[1].last - a[1].last)
     const cwd = await $.session.cwd()
@@ -297,7 +297,7 @@ export const register: Register = (on, options) => {
 
           return (
             <Text wrap="truncate-end" color={isChanged ? 'yellow' : 'magenta'}>
-              {isChanged ? '✎' : '👁'} <Text bold={isChanged}>{clip(rel(path), room)}</Text>
+              {isChanged ? '✎' : '👁'} <Text bold={isChanged}><Link href={`file://${encodeURI(path)}`}>{clip(rel(path), room)}</Link></Text>
               <Text dimColor>{stat} ({who})</Text>
             </Text>
           )

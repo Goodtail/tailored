@@ -1,10 +1,19 @@
 {
   "name": "agent-watch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Watch your helpers work: each subagent's model, tokens and estimated cost, and a file tree that marks what was read and what was changed, by whom.",
-  "author": { "name": "Goodtail" },
+  "author": {
+    "name": "Goodtail"
+  },
   "license": "MIT",
-  "keywords": ["mod", "subagent", "cost", "files", "tree", "progress"],
+  "keywords": [
+    "mod",
+    "subagent",
+    "cost",
+    "files",
+    "tree",
+    "progress"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "showProgressLine": {

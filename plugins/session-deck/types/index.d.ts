@@ -6,6 +6,8 @@ export type Pr = {
   branch: string
   isDraft: boolean
   review?: string
+  /** Where the PR lives; the band and pane link to it. */
+  url?: string
 }
 
 export type Deck = {

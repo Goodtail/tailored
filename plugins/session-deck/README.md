@@ -51,6 +51,7 @@ Requires Claude Code v2.1.287 or later.
 - The band appears above the prompt after Claude's first response.
   **Deck** opens the pane, **Hide** removes the band.
 - `/deck` opens the pane (and brings back a hidden band).
+- PR numbers are links (`PR#7` in the band, `#7` in the pane): cmd+click opens the pull request in a terminal that supports links.
 - **Refresh** in the pane re-reads git and pull requests.
 - `/handoff` writes `.claude/handoff.md` (branch, uncommitted files, recent commits, open PRs, todos and a note you add as `/handoff <note>`) and prints a line to paste into the next session. When a session starts in a folder that has one, the one-line briefing says so.
 - `/deck-stats` answers with a text summary: messages, requests, tokens, session cost and the costliest message.

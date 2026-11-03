@@ -211,7 +211,7 @@ async function fetchPrs($: EngineInterface): Promise<{ prs: Pr[] | null; note?: 
   try {
     const r = await $.process.run(
       ['gh', 'pr', 'list', '--state', 'open', '--limit', '10', '--json',
-        'number,title,headRefName,isDraft,reviewDecision'],
+        'number,title,headRefName,isDraft,reviewDecision,url'],
       { timeoutMs: 15000 },
     )
     if (r.exitCode !== 0) return { prs: null, note: 'gh: no PRs (not a GitHub repo, or not signed in)' }
@@ -219,6 +219,7 @@ async function fetchPrs($: EngineInterface): Promise<{ prs: Pr[] | null; note?: 
       number: number
       title: string
       headRefName: string
+      url?: string
       isDraft: boolean
       reviewDecision?: string
     }[]
@@ -227,6 +228,7 @@ async function fetchPrs($: EngineInterface): Promise<{ prs: Pr[] | null; note?: 
         number: p.number,
         title: p.title,
         branch: p.headRefName,
+        url: p.url,
         isDraft: p.isDraft,
         review: p.reviewDecision || undefined,
       })),
@@ -629,7 +631,7 @@ export const register: Register = (on, options) => {
     const d = await read($, deck)
     if (!isBandOn(options) || e.props.hasSurvey || d === null) return next(e)
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Link, Text } = $.ui.resolve(e)
     const cols = Math.max(24, e.props.bodyColumns ?? 80)
     const isWide = cols >= 90
     const isMid = cols >= 62
@@ -732,7 +734,19 @@ export const register: Register = (on, options) => {
     if (d.changes > 0) head.push(seg(`±${d.changes}`, 2, <Text color="yellow">±{d.changes}</Text>))
     if (mine !== undefined) {
       const pr = `🔀 PR#${mine.number}${isWide && d.prs !== null && d.prs.length > 1 ? ` (${d.prs.length} open)` : ''}`
-      head.push(seg(pr, 3, <Text color="blue">{pr}</Text>))
+      // PR#7 is a link where the terminal supports them (cmd+click opens the PR).
+      const prRest = pr.replace(`🔀 PR#${mine.number}`, '')
+      head.push(
+        seg(
+          pr,
+          3,
+          mine.url ? (
+            <Text color="blue">🔀 <Link href={mine.url}>PR#{mine.number}</Link>{prRest}</Text>
+          ) : (
+            <Text color="blue">{pr}</Text>
+          ),
+        ),
+      )
     } else if (d.prs !== null && d.prs.length > 0 && isMid) {
       head.push(seg(`🔀 ${d.prs.length} open`, 3, <Text color="blue">🔀 {d.prs.length} open</Text>))
     }
@@ -809,7 +823,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     const d = await read($, deck)
     if (d === null) {
       return <Text dimColor>No reading yet. It appears after Claude's first response.</Text>
@@ -921,7 +935,7 @@ export const register: Register = (on, options) => {
         {d.prs !== null && d.prs.length === 0 && <Text dimColor>No open PRs.</Text>}
         {d.prs?.map(p => (
           <Text color={p.branch === d.branch ? 'cyan' : undefined} bold={p.branch === d.branch}>
-            #{p.number} {p.isDraft ? '[draft] ' : ''}{p.title.slice(0, Math.max(10, cols - 24))}
+            {p.url ? <Link href={p.url}>#{p.number}</Link> : `#${p.number}`} {p.isDraft ? '[draft] ' : ''}{p.title.slice(0, Math.max(10, cols - 24))}
             <Text dimColor> ({p.branch}){p.review ? ` · ${p.review.toLowerCase()}` : ''}</Text>
           </Text>
         ))}
