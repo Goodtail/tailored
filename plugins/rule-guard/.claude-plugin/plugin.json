@@ -1,6 +1,6 @@
 {
   "name": "rule-guard",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Enforces your rules on Bash commands in code, not by asking nicely: blocks AI attribution in commits and PRs, asks before destructive commands, and blocks patterns you choose, optionally only under certain folders.",
   "author": {
     "name": "Goodtail"
@@ -50,6 +50,12 @@
       "title": "Commit subject must be in Korean",
       "description": "On: a git commit whose subject has no Hangul is refused. Only messages typed on the command line (-m or a heredoc) are read.",
       "default": false
+    },
+    "bannedCommitTags": {
+      "type": "string",
+      "title": "Tags that only name a kind of work",
+      "description": "Words separated by commas. A commit or PR title that starts with one of them in brackets, such as [기능], is refused, so the bracket names the feature that changed ([로그인]) and not the kind of work. Applies to commit messages typed on the command line and to gh pr create or edit titles. Leave empty to skip.",
+      "default": ""
     },
     "commitSubjectPattern": {
       "type": "string",

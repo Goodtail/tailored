@@ -13,6 +13,7 @@ pattern matching and no model call.
 | Destructive commands | on | Asks you first before `rm -rf` on a broad target, `git push --force`, `git reset --hard`, `git clean -f`, `DROP TABLE/DATABASE` and `chmod -R 777`. With nobody to ask (`claude -p`), the command is refused. |
 | Korean commit subject | off | Refuses a `git commit` whose subject has no Hangul. |
 | Commit subject style | off | Refuses a subject that does not match a regular expression you give, such as `^\[(기능\|수정\|문서\|리팩터링\|테스트\|기타)\] `. |
+| Feature-name tags | off | Refuses a commit or PR title whose bracket tag only names a kind of work (a list you give, such as `기능,수정,문서`), so the tag names the feature that changed, like `[소셜 로그인]`. Also reads `gh pr create` and `gh pr edit` titles. |
 | Subagent model | off | A subagent started with no model gets the one you name (for example `sonnet`) instead of inheriting the session's, except for types you keep (default `architect,planner`). |
 | Your own pattern | off | Refuses commands that match a regular expression you give, optionally only when the session's folder path contains a fragment you name (for example only inside a company repository). |
 

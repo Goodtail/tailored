@@ -93,3 +93,19 @@ test('a heredoc that writes another file is not read as the commit message', { o
   const ran = await $.tool.call({ tool: 'Bash', command })
   expect(ran.deny).toBeUndefined()
 })
+
+test('a bracket tag that only names a kind of work is refused, a feature name passes', { options: { bannedCommitTags: '기능,수정,계약' } }, async ($, on) => {
+  stub(on)
+  const generic = await $.tool.call({ tool: 'Bash', command: 'git commit -m "[기능] [계약] 주문 상태 추가"' })
+  expect(generic.deny).toContain('names a kind of work')
+  const named = await $.tool.call({ tool: 'Bash', command: 'git commit -m "[주문 상태] 취소 단계 추가"' })
+  expect(named.deny).toBeUndefined()
+})
+
+test('a PR title is judged like a commit subject', { options: { bannedCommitTags: '기능' } }, async ($, on) => {
+  stub(on)
+  const bad = await $.tool.call({ tool: 'Bash', command: 'gh pr create --title "[기능] 로그인 추가" --body "x"' })
+  expect(bad.deny).toContain('names a kind of work')
+  const good = await $.tool.call({ tool: 'Bash', command: 'gh pr create --title "[소셜 로그인] 카카오 연동" --body "x"' })
+  expect(good.deny).toBeUndefined()
+})

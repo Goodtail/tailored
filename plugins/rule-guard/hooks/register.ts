@@ -37,6 +37,12 @@ const DESTRUCTIVE: { name: string; test: RegExp }[] = [
 // ($(cat <<'EOF' ...)) or from -m "..." / -m '...'. null when it cannot be read
 // (-F file, an editor, --amend with no message), so nothing is judged then.
 function commitSubject(command: string): string | null {
+  // A pull request's title is judged like a commit subject.
+  const pr = /\bgh\s+pr\s+(?:create|edit)\b/.exec(command)
+  if (pr !== null) {
+    const title = /(?:--title|-t)[ =]\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')/.exec(command.slice(pr.index))
+    return title === null ? null : (title[1] ?? title[2] ?? '').trim()
+  }
   const at = command.search(/\bgit\s+commit\b/)
   if (at === -1) return null
   // Only what comes after the commit command is the commit's: a command that also
@@ -122,6 +128,20 @@ export const register: Register = (on, options) => {
         if (re !== null && !re.test(subject)) {
           return await refuse($, 'Commit style', command, `rule-guard: the commit subject must match ${style}. Got "${subject.slice(0, 80)}". Rewrite it and commit again.`)
         }
+      }
+      // The bracket tag names the feature, not the kind of work: [로그인], not [기능].
+      const banned = (typeof options.bannedCommitTags === 'string' ? options.bannedCommitTags : '')
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+      const tag = /^\[([^\]]*)\]/.exec(subject)
+      if (tag !== null && banned.includes(tag[1].trim())) {
+        return await refuse(
+          $,
+          'Generic tag',
+          command,
+          `rule-guard: [${tag[1].trim()}] names a kind of work, not the feature. Put the name of the feature, screen or area that changed in the brackets, for example [소셜 로그인] or [주문 내역], then a short line saying what changed. Rewrite it and run it again.`,
+        )
       }
     }
 
