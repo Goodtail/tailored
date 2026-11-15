@@ -351,6 +351,7 @@ const guard = {
   lastPingAt: 0,
   notifiedFor: 0,
   compactedFor: 0,
+  compactedAt: 0,
   lastHerdr: 0,
 }
 
@@ -366,7 +367,7 @@ async function effectiveGuard(
   const folders = (await $.store.get('guardFolders')) as Record<string, string> | undefined
   const here = folders?.[await $.session.cwd()]
   if (here !== undefined && GUARD_MODES.includes(here)) return { mode: here, source: 'this folder' }
-  const base = typeof options.cacheGuard === 'string' && GUARD_MODES.includes(options.cacheGuard) ? options.cacheGuard : 'off'
+  const base = typeof options.cacheGuard === 'string' && GUARD_MODES.includes(options.cacheGuard) ? options.cacheGuard : 'compact'
 
   return { mode: base, source: 'default' }
 }
@@ -456,6 +457,19 @@ async function guardTick($: EngineInterface, options: Readonly<Record<string, un
     }
     if (guard.compactedFor === last) return
     guard.compactedFor = last
+    // Someone else may have compacted a moment ago (the engine's own auto-compact,
+    // or /compact), and the deck's numbers lag: never compact twice in a row.
+    if (Date.now() - guard.compactedAt < 10 * 60_000) return
+    const fresh = await $.session.usage({ breakdown: 'summary' })
+    const now = fresh.context.tokens ?? d.tokens
+    if (now < num(options.cacheCompactMinTokens, 250_000)) return
+    // The engine compacts by itself at its threshold, on the next message. Close
+    // to it, leave the job to the engine instead of summarizing twice.
+    const view = fresh.context.breakdown
+    if (view?.isAutoCompactEnabled === true && view.autoCompactThreshold !== undefined && now >= view.autoCompactThreshold * 0.95) {
+      $.ui.toast(`Claude's own auto-compact is about to run (${k(now)} of ${k(view.autoCompactThreshold)}), so session-deck leaves it.`)
+      return
+    }
     const instructions =
       typeof options.cacheCompactInstructions === 'string' && options.cacheCompactInstructions.trim() !== ''
         ? options.cacheCompactInstructions
@@ -463,11 +477,11 @@ async function guardTick($: EngineInterface, options: Readonly<Record<string, un
     try {
       const res = await $.session.compact({ instructions })
       if (res.skip !== undefined) {
-        $.ui.toast(`Auto-compact skipped: ${res.skip}`)
+        $.ui.toast(`🧊 Cache guard: compact skipped: ${res.skip}`)
       } else {
         await update($, pings, () => 0)
         await refresh($, options, true)
-        const msg = `Compacted before the cache ran out${res.tokensBefore !== undefined && res.tokensAfter !== undefined ? `: ${k(res.tokensBefore)} to ${k(res.tokensAfter)} tokens` : ''}.`
+        const msg = `🧊 Cache guard compacted before the cache ran out${res.tokensBefore !== undefined && res.tokensAfter !== undefined ? `: ${k(res.tokensBefore)} to ${k(res.tokensAfter)} tokens` : ''}.`
         $.ui.toast(msg)
         void $.ui.notify(msg, { title: 'Claude Code' })
       }
@@ -484,6 +498,21 @@ export const register: Register = (on, options) => {
   let calls = 0
   // When the current message began, in $.clock.now()'s milliseconds.
   let turnStartedAt = 0
+
+  // Any compaction of the main conversation, the engine's own included: note it,
+  // so the cache guard does not compact again on stale numbers.
+  on('session.compact', async ($, e, next) => {
+    const res = await next(e)
+    if (e.trigger !== 'precompute' && e.agentId === undefined && res.skip === undefined) {
+      guard.compactedAt = Date.now()
+      await update($, pings, () => 0)
+      // Ours says so itself (guardTick); the engine's own is named here.
+      if (e.trigger === 'auto') $.ui.toast(`🤖 Claude's own auto-compact ran${res.tokensBefore !== undefined && res.tokensAfter !== undefined ? `: ${k(res.tokensBefore)} to ${k(res.tokensAfter)} tokens` : ''} (not the cache guard).`)
+      void refresh($, options, true).catch(() => undefined)
+    }
+
+    return res
+  })
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {

@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -90,8 +90,8 @@
     "cacheGuard": {
       "type": "string",
       "title": "Keep the prompt cache from going cold",
-      "description": "off, ping, compact or both. ping: send a tiny message shortly before the cache runs out (1-hour caches only, up to the ping limit). compact: run /compact shortly before it runs out when the context is big. both: ping first, then compact once the pings are used up. Override for one session with /cacheguard, for a folder with /cacheguard --here.",
-      "default": "off",
+      "description": "off, ping, compact or both. ping: send a tiny message shortly before the cache runs out (1-hour caches only, up to the ping limit). compact: run /compact shortly before it runs out when the context is big. both: ping first, then compact once the pings are used up. Default compact. Claude's own auto-compact is detected: no second compaction is run. Override for one session with /cacheguard, for a folder with /cacheguard --here.",
+      "default": "compact",
       "options": [
         "off",
         "ping",

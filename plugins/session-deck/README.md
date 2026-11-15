@@ -69,6 +69,7 @@ guard can prevent that. It is **off** until you turn it on.
 | `both` | Pings first; once the pings are used up, compacts once and stops. |
 
 - A message from you starts the count over. Nothing is sent while a turn runs or while you have text typed in the prompt.
+- Claude Code's own auto-compact is detected. Within 10 minutes of any compaction, or when the context is within 5% of Claude's own threshold, the guard does not compact again. A toast says which one ran: `🧊 Cache guard compacted …` for ours, `🤖 Claude's own auto-compact ran …` for the engine's.
 - A 5-minute cache is not pinged (a ping every 3 minutes costs about as much as letting it expire) and compact only notifies you. A 1-hour cache compacts by itself unless `cacheCompactMode` is `ask`.
 - Pings are real requests: they use your usage limit and add a few tokens to the conversation.
 - Set it for everything with `/plugin configure`, for one folder with `/cacheguard both --here`, and for just this session with `/cacheguard off`. `/cacheguard default` clears an override and `/cacheguard status` shows what is in force. The band shows `· keep ping 1/4` next to the cache clock.
@@ -94,7 +95,7 @@ Set them in the `/plugin` config menu for `session-deck`.
 | `briefing` | `true` | One-line summary (branch, changes, PRs, handoff note) when a session starts. |
 | `notifyOnPermission` | `true` | Notify when Claude waits for a permission or an answer. |
 | `confirmModelSwitchAtTokens` | `100000` | Ask before `/model` drops a warm cache once the context is this large. `0` turns it off. |
-| `cacheGuard` | `off` | `off`, `ping`, `compact` or `both` (see above). |
+| `cacheGuard` | `compact` | `off`, `ping`, `compact` or `both` (see above). |
 | `cachePingMinTokens` | `100000` | Ping only when the context is at least this big. |
 | `cacheCompactMinTokens` | `250000` | Compact only when the context is at least this big. |
 | `cachePingMax` | `4` | Most pings in a row. |
