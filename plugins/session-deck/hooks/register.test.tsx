@@ -178,3 +178,14 @@ test('the band drops the least important pieces as the window narrows', async ($
   expect(await narrow.find({ type: 'Text', text: /per 1M/ })).toBeUndefined()
   await narrow.unmount()
 })
+
+test('/cacheguard sets the mode for this session and says where it comes from', async ($, on) => {
+  stubEngine(on)
+  on('store.get', () => ({ value: undefined }))
+  const set = await $.command.run({ command: 'cacheguard', args: 'ping' })
+  expect(set.text).toContain('Cache guard: ping (from this session)')
+  const back = await $.command.run({ command: 'cacheguard', args: 'default' })
+  expect(back.text).toContain('(from default)')
+  const bad = await $.command.run({ command: 'cacheguard', args: 'nonsense' })
+  expect(bad.text).toContain('Use /cacheguard')
+})

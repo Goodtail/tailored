@@ -1,6 +1,6 @@
 {
   "name": "session-deck",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "A live deck for your Claude Code session: model, context, usage limits, git branch and worktree, open PRs and todos, in a band above the prompt and a side pane.",
   "author": {
     "name": "Goodtail"
@@ -86,6 +86,64 @@
       "title": "Ask before /model above (tokens)",
       "description": "When the context is at least this big and the cache is warm, /model asks first, because switching throws the cache away. 0 turns it off. Default 100000.",
       "default": 100000
+    },
+    "cacheGuard": {
+      "type": "string",
+      "title": "Keep the prompt cache from going cold",
+      "description": "off, ping, compact or both. ping: send a tiny message shortly before the cache runs out (1-hour caches only, up to the ping limit). compact: run /compact shortly before it runs out when the context is big. both: ping first, then compact once the pings are used up. Override for one session with /cacheguard, for a folder with /cacheguard --here.",
+      "default": "off",
+      "options": [
+        "off",
+        "ping",
+        "compact",
+        "both"
+      ]
+    },
+    "cachePingMinTokens": {
+      "type": "number",
+      "title": "Ping only when the context is at least (tokens)",
+      "description": "Below this size a cold cache costs little, so no ping is sent. Default 100000.",
+      "default": 100000
+    },
+    "cacheCompactMinTokens": {
+      "type": "number",
+      "title": "Compact only when the context is at least (tokens)",
+      "description": "Below this size /compact is not worth running. Default 250000.",
+      "default": 250000
+    },
+    "cachePingMax": {
+      "type": "number",
+      "title": "Most pings in a row",
+      "description": "After this many pings without a message from you, pinging stops (and compact takes over in both mode). Default 4.",
+      "default": 4
+    },
+    "cachePingOn5m": {
+      "type": "boolean",
+      "title": "Ping a 5-minute cache too",
+      "description": "Off by default: with a 5-minute cache a ping every 3 minutes costs about as much as letting it expire.",
+      "default": false
+    },
+    "cacheCompactMode": {
+      "type": "string",
+      "title": "How compact runs",
+      "description": "auto: compacts by itself when a 1-hour cache is about to run out. ask: only notifies you. A 5-minute cache always only notifies.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "ask"
+      ]
+    },
+    "cacheCompactInstructions": {
+      "type": "string",
+      "title": "What the summary must keep",
+      "description": "Told to the summarizer when the guard compacts.",
+      "default": "Keep the current branch, the files being edited, the open todos and the last decisions."
+    },
+    "herdrSync": {
+      "type": "boolean",
+      "title": "Tell herdr about this session",
+      "description": "When this session runs in a herdr pane, report model, context, cost, cache time and limit so herdr can show them. Does nothing outside herdr.",
+      "default": true
     }
   }
 }

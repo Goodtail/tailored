@@ -56,6 +56,29 @@ Requires Claude Code v2.1.287 or later.
 - `/handoff` writes `.claude/handoff.md` (branch, uncommitted files, recent commits, open PRs, todos and a note you add as `/handoff <note>`) and prints a line to paste into the next session. When a session starts in a folder that has one, the one-line briefing says so.
 - `/deck-stats` answers with a text summary: messages, requests, tokens, session cost and the costliest message.
 
+## Keep the prompt cache warm (`/cacheguard`)
+
+The prompt cache goes cold after a while without a message (the countdown in the band
+shows how long), and the next message then pays to write the whole context again. The
+guard can prevent that. It is **off** until you turn it on.
+
+| Mode | What it does |
+| --- | --- |
+| `ping` | A few minutes before a 1-hour cache runs out, sends a tiny message ("reply with the single word: pong") so the cache stays warm. Stops after `cachePingMax` pings in a row. |
+| `compact` | Runs `/compact` shortly before the cache runs out when the context is at least `cacheCompactMinTokens`, so the next message re-sends a small context. |
+| `both` | Pings first; once the pings are used up, compacts once and stops. |
+
+- A message from you starts the count over. Nothing is sent while a turn runs or while you have text typed in the prompt.
+- A 5-minute cache is not pinged (a ping every 3 minutes costs about as much as letting it expire) and compact only notifies you. A 1-hour cache compacts by itself unless `cacheCompactMode` is `ask`.
+- Pings are real requests: they use your usage limit and add a few tokens to the conversation.
+- Set it for everything with `/plugin configure`, for one folder with `/cacheguard both --here`, and for just this session with `/cacheguard off`. `/cacheguard default` clears an override and `/cacheguard status` shows what is in force. The band shows `· keep ping 1/4` next to the cache clock.
+
+## herdr
+
+When the session runs in a herdr pane, session-deck tells herdr the model, context, cost, cache time left and
+usage limit (`herdr pane report-metadata`), so they can show beside the agent without switching panes. Turn it off with `herdrSync`.
+It does nothing outside herdr.
+
 ## Options
 
 Set them in the `/plugin` config menu for `session-deck`.
@@ -71,6 +94,14 @@ Set them in the `/plugin` config menu for `session-deck`.
 | `briefing` | `true` | One-line summary (branch, changes, PRs, handoff note) when a session starts. |
 | `notifyOnPermission` | `true` | Notify when Claude waits for a permission or an answer. |
 | `confirmModelSwitchAtTokens` | `100000` | Ask before `/model` drops a warm cache once the context is this large. `0` turns it off. |
+| `cacheGuard` | `off` | `off`, `ping`, `compact` or `both` (see above). |
+| `cachePingMinTokens` | `100000` | Ping only when the context is at least this big. |
+| `cacheCompactMinTokens` | `250000` | Compact only when the context is at least this big. |
+| `cachePingMax` | `4` | Most pings in a row. |
+| `cachePingOn5m` | `false` | Also ping a 5-minute cache. |
+| `cacheCompactMode` | `auto` | `auto` or `ask` (notify only). |
+| `cacheCompactInstructions` | a default | What the summary must keep. |
+| `herdrSync` | `true` | Report session figures to herdr. |
 | `compactHintPercent` | `50` | Context percent from which the band suggests `/compact` or a new session, with the cost of re-reading it per request. |
 
 ## Requirements and privacy

@@ -335,6 +335,150 @@ async function refresh(
   }
 }
 
+// Keep the prompt cache from going cold: a ping (a tiny message) while a short
+// break lasts, a /compact once a long one is likely. The mode can be set for the
+// whole install (option), for a folder, or for this session only.
+const guardMode = atom({ plugin: 'session-deck', key: 'guardMode' } as const, null)
+const pings = atom({ plugin: 'session-deck', key: 'pings' } as const, 0)
+const guardInfo = atom({ plugin: 'session-deck', key: 'guardInfo' } as const, null, {
+  shape: 'guardinfo-1',
+})
+
+const guard = {
+  turnRunning: false,
+  pinging: false,
+  busy: false,
+  lastPingAt: 0,
+  notifiedFor: 0,
+  compactedFor: 0,
+  lastHerdr: 0,
+}
+
+const GUARD_MODES = ['off', 'ping', 'compact', 'both']
+const num = (v: unknown, fallback: number) => (typeof v === 'number' && v >= 0 ? v : fallback)
+
+async function effectiveGuard(
+  $: EngineInterface,
+  options: Readonly<Record<string, unknown>>,
+): Promise<{ mode: string; source: string }> {
+  const session = await read($, guardMode)
+  if (session !== null && GUARD_MODES.includes(session)) return { mode: session, source: 'this session' }
+  const folders = (await $.store.get('guardFolders')) as Record<string, string> | undefined
+  const here = folders?.[await $.session.cwd()]
+  if (here !== undefined && GUARD_MODES.includes(here)) return { mode: here, source: 'this folder' }
+  const base = typeof options.cacheGuard === 'string' && GUARD_MODES.includes(options.cacheGuard) ? options.cacheGuard : 'off'
+
+  return { mode: base, source: 'default' }
+}
+
+// Tells herdr (a terminal multiplexer for coding agents) what this session looks
+// like, so its sidebar can show context, cost and cache without switching panes.
+async function herdrSync(
+  $: EngineInterface,
+  options: Readonly<Record<string, unknown>>,
+  d: Deck,
+  leftMs: number | null,
+  keep: string,
+) {
+  if (options.herdrSync === false || Date.now() - guard.lastHerdr < 20_000) return
+  const pane = await $.env.get('HERDR_PANE_ID')
+  if (pane === undefined || pane === '') return
+  guard.lastHerdr = Date.now()
+  const five = d.limits.find(l => l.kind === 'five_hour') ?? d.limits[0]
+  const args = [
+    'herdr', 'pane', 'report-metadata', pane,
+    '--source', 'session-deck', '--agent', 'claude',
+    '--title', `${prettyModel(d.model)} · ctx ${d.percent}%${d.usd !== undefined ? ` · $${d.usd.toFixed(0)}` : ''}`,
+    '--token', `ctx=${d.percent}%`,
+    '--ttl-ms', '90000',
+  ]
+  if (d.usd !== undefined) args.push('--token', `cost=$${d.usd.toFixed(2)}`)
+  if (leftMs !== null) args.push('--token', `cache=${leftMs > 0 ? clock(leftMs) : 'expired'}`)
+  if (five !== undefined) args.push('--token', `limit=${limitName(five.kind)} ${five.percent}%`)
+  if (keep !== '') args.push('--token', `keep=${keep}`)
+  try {
+    await $.process.run(args, { timeoutMs: 5000 })
+  } catch {
+    // herdr is not there: nothing to tell
+  }
+}
+
+async function guardTick($: EngineInterface, options: Readonly<Record<string, unknown>>) {
+  if (guard.busy) return
+  guard.busy = true
+  try {
+    const { mode, source } = await effectiveGuard($, options)
+    const d = await read($, deck)
+    const last = await read($, lastAt)
+    const done = await read($, pings)
+    const max = num(options.cachePingMax, 4)
+    await update($, guardInfo, () => ({ mode, source, pings: done, max }))
+
+    const seen = await read($, seenTtl)
+    const ttl = (seen ?? options.cacheTtl ?? '1h') === '5m' ? 5 : 60
+    const left = last === null ? null : ttl * 60_000 - (Date.now() - last)
+    const keep = mode === 'off' ? '' : mode === 'compact' ? 'compact' : `${mode} ${done}/${max}`
+    if (d !== null) await herdrSync($, options, d, left, keep)
+
+    if (mode === 'off' || d === null || last === null || left === null || guard.turnRunning) return
+    const lead = (ttl === 5 ? 2 : 5) * 60_000
+    if (left <= 0 || left > lead) return
+    // Never talk over a message being typed.
+    if ((await $.prompt.read()).text.trim() !== '') return
+
+    const pingOk = ttl >= 60 || options.cachePingOn5m === true
+    const canPing =
+      (mode === 'ping' || mode === 'both') && d.tokens >= num(options.cachePingMinTokens, 100_000) && done < max && pingOk
+    if (canPing) {
+      if (Date.now() - guard.lastPingAt < 60_000) return
+      guard.lastPingAt = Date.now()
+      guard.pinging = true
+      await update($, pings, n => n + 1)
+      $.ui.toast(`Keeping the cache warm: ping ${done + 1}/${max}`)
+      $.prompt.submit({ text: 'Cache keep-alive ping. Reply with the single word: pong' }).catch(() => {
+        guard.pinging = false
+      })
+      return
+    }
+
+    const wantsCompact = (mode === 'compact' || mode === 'both') && d.tokens >= num(options.cacheCompactMinTokens, 250_000)
+    if (!wantsCompact) return
+    // A 1-hour cache compacts by itself; a 5-minute one only asks, because the
+    // person is likely back before it runs out.
+    const isAuto = ttl >= 60 && options.cacheCompactMode !== 'ask'
+    if (!isAuto) {
+      if (guard.notifiedFor === last) return
+      guard.notifiedFor = last
+      const msg = `The cache runs out in ${clock(left)}. /compact now would shrink the ${k(d.tokens)} the next message re-sends.`
+      $.ui.toast(msg)
+      void $.ui.notify(msg, { title: 'Claude Code' })
+      return
+    }
+    if (guard.compactedFor === last) return
+    guard.compactedFor = last
+    const instructions =
+      typeof options.cacheCompactInstructions === 'string' && options.cacheCompactInstructions.trim() !== ''
+        ? options.cacheCompactInstructions
+        : 'Keep the current branch, the files being edited, the open todos and the last decisions.'
+    try {
+      const res = await $.session.compact({ instructions })
+      if (res.skip !== undefined) {
+        $.ui.toast(`Auto-compact skipped: ${res.skip}`)
+      } else {
+        await update($, pings, () => 0)
+        await refresh($, options, true)
+        const msg = `Compacted before the cache ran out${res.tokensBefore !== undefined && res.tokensAfter !== undefined ? `: ${k(res.tokensBefore)} to ${k(res.tokensAfter)} tokens` : ''}.`
+        $.ui.toast(msg)
+        void $.ui.notify(msg, { title: 'Claude Code' })
+      }
+    } catch {
+      $.ui.toast('Auto-compact did not run (a message was starting).')
+    }
+  } finally {
+    guard.busy = false
+  }
+}
+
 export const register: Register = (on, options) => {
   // Model requests the main loop made for the current message.
   let calls = 0
@@ -343,6 +487,13 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
+      guard.turnRunning = true
+      // A message of the person's starts the keep-alive count over.
+      if (!guard.pinging) {
+        await update($, pings, () => 0)
+        guard.compactedFor = 0
+        guard.notifiedFor = 0
+      }
       calls = 0
       turnStartedAt = await $.clock.now()
       turnBaseUsd = (await $.session.usage()).cost?.usd ?? null
@@ -458,6 +609,13 @@ export const register: Register = (on, options) => {
     })
     // Redraw now and then so the cache countdown moves between messages.
     $.clock.every(10_000, () => $.ui.invalidate('ui.render'))
+    $.clock.every(15_000, () => {
+      void guardTick($, options)
+    })
+    await $.command.register({
+      name: 'cacheguard',
+      description: 'Keep the prompt cache warm: /cacheguard off|ping|compact|both|default|status [--here]',
+    })
     await refresh($, options, true)
 
     const remembered = await $.store.get('cacheTtl')
@@ -516,6 +674,46 @@ export const register: Register = (on, options) => {
     }
   })
 
+  on('command.run', { command: 'cacheguard' }, async ($, e) => {
+    const parts = e.args.trim().split(/\s+/).filter(Boolean)
+    const here = parts.includes('--here')
+    const word = parts.find(p => !p.startsWith('--')) ?? 'status'
+    const cwd = await $.session.cwd()
+    const folders = ((await $.store.get('guardFolders')) as Record<string, string> | undefined) ?? {}
+
+    if (GUARD_MODES.includes(word)) {
+      if (here) {
+        await $.store.set('guardFolders', { ...folders, [cwd]: word })
+      } else {
+        await update($, guardMode, () => word)
+      }
+    } else if (word === 'default') {
+      if (here) {
+        const rest = { ...folders }
+        delete rest[cwd]
+        await $.store.set('guardFolders', rest)
+      } else {
+        await update($, guardMode, () => null)
+      }
+    } else if (word !== 'status') {
+      return { text: 'Use /cacheguard off, ping, compact, both, default or status. Add --here to remember it for this folder.' }
+    }
+
+    const { mode, source } = await effectiveGuard($, options)
+    const done = await read($, pings)
+    const seen = await read($, seenTtl)
+    const ttl = (seen ?? options.cacheTtl ?? '1h') === '5m' ? '5 minutes' : '1 hour'
+
+    return {
+      text: [
+        `Cache guard: ${mode} (from ${source})`,
+        `Cache lifetime: ${ttl}${(seen ?? options.cacheTtl ?? '1h') === '5m' && options.cachePingOn5m !== true ? ' (pings are off for a 5-minute cache)' : ''}`,
+        `Pings: ${done}/${num(options.cachePingMax, 4)} · ping from ${k(num(options.cachePingMinTokens, 100_000))} · compact from ${k(num(options.cacheCompactMinTokens, 250_000))}`,
+        'Set it with /cacheguard off|ping|compact|both|default, add --here for this folder.',
+      ].join('\n'),
+    }
+  })
+
   on('command.run', { command: 'deck-stats' }, async $ => {
     const tot = await read($, totals)
     const top = await read($, peak)
@@ -548,6 +746,10 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      guard.turnRunning = false
+      guard.pinging = false
+    }
     if (e.agentId === undefined && e.usage !== undefined && calls === 0) {
       const u = e.usage
       const row: Spend = {
@@ -721,6 +923,8 @@ export const register: Register = (on, options) => {
     // 1h unless the engine or the option says 5m: Claude Code sessions cache for an hour.
     const ttlMs = ((seen ?? options.cacheTtl ?? '1h') === '5m' ? 5 : 60) * 60_000
     const left = last === null ? null : ttlMs - (Date.now() - last)
+    const gi = await read($, guardInfo)
+    const keepText = gi === null || gi.mode === 'off' ? '' : gi.mode === 'compact' ? ' · keep: compact' : ` · keep ${gi.mode} ${gi.pings}/${gi.max}`
     const compactAt = typeof options.compactHintPercent === 'number' ? options.compactHintPercent : 50
     const cachePrice = priceOf(model)?.cache
     const perCall = cachePrice !== undefined ? (d.tokens / 1_000_000) * cachePrice : null
@@ -787,7 +991,7 @@ export const register: Register = (on, options) => {
     if (left !== null) {
       if (left > 0) {
         const c = left > ttlMs * 0.4 ? 'green' : left > ttlMs * 0.15 ? 'yellow' : 'red'
-        tail.push(seg(`🧊 cache ${clock(left)} left`, 1, <Text color={c}>🧊 cache {clock(left)} left</Text>))
+        tail.push(seg(`🧊 cache ${clock(left)} left${keepText}`, 1, <Text color={c}>🧊 cache {clock(left)} left{keepText}</Text>))
       } else {
         const msg = isMid ? `🧊 cache expired: next request re-caches ${k(d.tokens)}` : '🧊 cache expired'
         tail.push(seg(msg, 1, <Text color="red">{msg}</Text>))

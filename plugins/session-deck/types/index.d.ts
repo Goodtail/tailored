@@ -69,6 +69,9 @@ export type AgentStat = {
   output: number
 }
 
+/** What the cache guard decided for this moment. */
+export type GuardInfo = { mode: string; source: string; pings: number; max: number }
+
 export type Todo = { items: TodoItem[] }
 
 declare module 'claude-code' {
@@ -80,6 +83,9 @@ declare module 'claude-code' {
       spend: Shaped<Spend | null>
       totals: Shaped<Totals | null>
       lastAt: number | null
+      guardMode: string | null
+      pings: number
+      guardInfo: Shaped<GuardInfo | null>
       agents: Shaped<Record<string, AgentStat>>
       fill: Shaped<Fill[] | null>
       seenTtl: '5m' | '1h' | null
