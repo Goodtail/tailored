@@ -508,7 +508,21 @@ export const register: Register = (on, options) => {
       await update($, pings, () => 0)
       // Ours says so itself (guardTick); the engine's own is named here.
       if (e.trigger === 'auto') $.ui.toast(`🤖 Claude's own auto-compact ran${res.tokensBefore !== undefined && res.tokensAfter !== undefined ? `: ${k(res.tokensBefore)} to ${k(res.tokensAfter)} tokens` : ''} (not the cache guard).`)
-      void refresh($, options, true).catch(() => undefined)
+      // The engine reads the context size off the last model response, which
+      // still shows the size from before the compaction until the next message.
+      // So draw the size the compaction itself reported.
+      try {
+        await refresh($, options, true)
+        const after = res.tokensAfter
+        if (after !== undefined) {
+          await update($, deck, d =>
+            d === null ? d : { ...d, tokens: after, percent: Math.min(100, Math.round((after / d.window) * 100)) },
+          )
+          $.ui.invalidate('ui.render')
+        }
+      } catch {
+        // the next message refreshes it anyway
+      }
     }
 
     return res
